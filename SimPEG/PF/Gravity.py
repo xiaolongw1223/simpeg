@@ -1,13 +1,18 @@
 from __future__ import print_function
+import os
+import shutil
+import numpy as np
+import scipy as sp
+import scipy.constants as constants
+from scipy.sparse import csr_matrix as csr
+import dask
+import dask.array as da
+from dask.diagnostics import ProgressBar
 from SimPEG import Problem, Mesh
 from SimPEG import Utils
 from SimPEG.Utils import mkvc
 from SimPEG import Props
-import scipy as sp
-import scipy.constants as constants
-import os
-import time
-import numpy as np
+
 
 class GravityIntegral(Problem.LinearProblem):
 
@@ -24,13 +29,63 @@ class GravityIntegral(Problem.LinearProblem):
     memory_saving_mode = False
     parallelized = False
     n_cpu = None
-    progress_index = -1
+    n_chunks = 1
     gtgdiag = None
-
+    Jpath = "./sensitivity.zarr"
+    maxRAM = 8  # Maximum memory usage
     aa = []
 
     def __init__(self, mesh, **kwargs):
         Problem.BaseProblem.__init__(self, mesh, **kwargs)
+
+        if getattr(self, 'actInd', None) is not None:
+
+            if self.actInd.dtype == 'bool':
+                inds = np.asarray([inds for inds,
+                                  elem in enumerate(self.actInd, 1)
+                                  if elem], dtype=int) - 1
+            else:
+                inds = self.actInd
+
+        else:
+
+            inds = np.asarray(range(self.mesh.nC))
+
+        self.nC = len(inds)
+
+        # Create active cell projector
+        P = sp.sparse.csr_matrix(
+            (np.ones(self.nC), (inds, range(self.nC))),
+            shape=(self.mesh.nC, self.nC)
+        )
+
+        # Create vectors of nodal location
+        # (lower and upper corners for each cell)
+        if isinstance(self.mesh, Mesh.TreeMesh):
+            # Get upper and lower corners of each cell
+            bsw = (self.mesh.gridCC - self.mesh.h_gridded/2.)
+            tne = (self.mesh.gridCC + self.mesh.h_gridded/2.)
+
+            xn1, xn2 = bsw[:, 0], tne[:, 0]
+            yn1, yn2 = bsw[:, 1], tne[:, 1]
+            zn1, zn2 = bsw[:, 2], tne[:, 2]
+
+        else:
+
+            xn = self.mesh.vectorNx
+            yn = self.mesh.vectorNy
+            zn = self.mesh.vectorNz
+
+            yn2, xn2, zn2 = np.meshgrid(yn[1:], xn[1:], zn[1:])
+            yn1, xn1, zn1 = np.meshgrid(yn[:-1], xn[:-1], zn[:-1])
+
+        # If equivalent source, use semi-infite prism
+        # if self.equiSourceLayer:
+        #     zn1 -= 1000.
+
+        self.Yn = P.T*np.c_[Utils.mkvc(yn1), Utils.mkvc(yn2)]
+        self.Xn = P.T*np.c_[Utils.mkvc(xn1), Utils.mkvc(xn2)]
+        self.Zn = P.T*np.c_[Utils.mkvc(zn1), Utils.mkvc(zn2)]
 
     def fields(self, m):
         self.model = self.rhoMap*m
@@ -120,55 +175,6 @@ class GravityIntegral(Problem.LinearProblem):
         if m is not None:
             self.model = self.rhoMap*m
 
-        if getattr(self, 'actInd', None) is not None:
-
-            if self.actInd.dtype == 'bool':
-                inds = np.asarray([inds for inds,
-                                  elem in enumerate(self.actInd, 1)
-                                  if elem], dtype=int) - 1
-            else:
-                inds = self.actInd
-
-        else:
-
-            inds = np.asarray(range(self.mesh.nC))
-
-        self.nC = len(inds)
-
-        # Create active cell projector
-        P = sp.sparse.csr_matrix(
-            (np.ones(self.nC), (inds, range(self.nC))),
-            shape=(self.mesh.nC, self.nC)
-        )
-
-        # Create vectors of nodal location
-        # (lower and upper corners for each cell)
-        if isinstance(self.mesh, Mesh.TreeMesh):
-            # Get upper and lower corners of each cell
-            bsw = (self.mesh.gridCC -
-                   np.kron(self.mesh.vol.T**(1/3)/2,
-                           np.ones(3)).reshape((self.mesh.nC, 3)))
-            tne = (self.mesh.gridCC +
-                   np.kron(self.mesh.vol.T**(1/3)/2,
-                           np.ones(3)).reshape((self.mesh.nC, 3)))
-
-            xn1, xn2 = bsw[:, 0], tne[:, 0]
-            yn1, yn2 = bsw[:, 1], tne[:, 1]
-            zn1, zn2 = bsw[:, 2], tne[:, 2]
-
-        else:
-
-            xn = self.mesh.vectorNx
-            yn = self.mesh.vectorNy
-            zn = self.mesh.vectorNz
-
-            yn2, xn2, zn2 = np.meshgrid(yn[1:], xn[1:], zn[1:])
-            yn1, xn1, zn1 = np.meshgrid(yn[:-1], xn[:-1], zn[:-1])
-
-        self.Yn = P.T*np.c_[Utils.mkvc(yn1), Utils.mkvc(yn2)]
-        self.Xn = P.T*np.c_[Utils.mkvc(xn1), Utils.mkvc(xn2)]
-        self.Zn = P.T*np.c_[Utils.mkvc(zn1), Utils.mkvc(zn2)]
-
         self.rxLoc = self.survey.srcField.rxList[0].locs
         self.nD = int(self.rxLoc.shape[0])
 
@@ -179,8 +185,9 @@ class GravityIntegral(Problem.LinearProblem):
         job = Forward(
                 rxLoc=self.rxLoc, Xn=self.Xn, Yn=self.Yn, Zn=self.Zn,
                 n_cpu=self.n_cpu, forwardOnly=self.forwardOnly,
-                model=self.model, rx_type=self.rx_type,
-                parallelized=self.parallelized
+                model=self.model, rxType=self.rxType,
+                parallelized=self.parallelized, n_chunks=self.n_chunks,
+                Jpath=self.Jpath, maxRAM=self.maxRAM
                 )
 
         G = job.calculate()

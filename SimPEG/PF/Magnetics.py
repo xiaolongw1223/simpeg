@@ -1,16 +1,18 @@
 from __future__ import print_function
-
+import os
+import shutil
 import numpy as np
 import scipy.sparse as sp
 from scipy.constants import mu_0
-
+import dask
+import dask.array as da
+from dask.diagnostics import ProgressBar
+import properties
 from SimPEG import Utils
 from SimPEG import Problem
 from SimPEG import Solver
 from SimPEG import Props
 from SimPEG import Mesh
-import multiprocessing
-import properties
 from SimPEG.Utils import mkvc, matutils, sdiag
 from . import BaseMag as MAG
 from .MagAnalytics import spheremodel, CongruousMagBC
@@ -52,6 +54,55 @@ class MagneticIntegral(Problem.LinearProblem):
         assert mesh.dim == 3, 'Integral formulation only available for 3D mesh'
         Problem.BaseProblem.__init__(self, mesh, **kwargs)
 
+        if self.modelType == 'vector':
+            self.magType = 'full'
+
+        # Find non-zero cells
+        if getattr(self, 'actInd', None) is not None:
+            if self.actInd.dtype == 'bool':
+                inds = np.asarray([inds for inds,
+                                  elem in enumerate(self.actInd, 1) if elem],
+                                  dtype=int) - 1
+            else:
+                inds = self.actInd
+
+        else:
+
+            inds = np.asarray(range(self.mesh.nC))
+
+        self.nC = len(inds)
+
+        # Create active cell projector
+        P = csr((np.ones(self.nC), (inds, range(self.nC))),
+                          shape=(self.mesh.nC, self.nC))
+
+        # Create vectors of nodal location
+        # (lower and upper coners for each cell)
+        if isinstance(self.mesh, Mesh.TreeMesh):
+            # Get upper and lower corners of each cell
+            bsw = (self.mesh.gridCC - self.mesh.h_gridded/2.)
+            tne = (self.mesh.gridCC + self.mesh.h_gridded/2.)
+
+            xn1, xn2 = bsw[:, 0], tne[:, 0]
+            yn1, yn2 = bsw[:, 1], tne[:, 1]
+            zn1, zn2 = bsw[:, 2], tne[:, 2]
+
+        else:
+
+            xn = self.mesh.vectorNx
+            yn = self.mesh.vectorNy
+            zn = self.mesh.vectorNz
+
+            yn2, xn2, zn2 = np.meshgrid(yn[1:], xn[1:], zn[1:])
+            yn1, xn1, zn1 = np.meshgrid(yn[:-1], xn[:-1], zn[:-1])
+
+        # If equivalent source, use semi-infite prism
+        # if self.equiSourceLayer:
+        #     zn1 -= 1000.
+
+        self.Yn = P.T*np.c_[mkvc(yn1), mkvc(yn2)]
+        self.Xn = P.T*np.c_[mkvc(xn1), mkvc(xn2)]
+        self.Zn = P.T*np.c_[mkvc(zn1), mkvc(zn2)]
     def fields(self, m):
 
         if self.coordinate_system == 'cartesian':
@@ -313,52 +364,6 @@ class MagneticIntegral(Problem.LinearProblem):
         if m is not None:
             self.model = self.chiMap*m
 
-        # Find non-zero cells
-        if getattr(self, 'actInd', None) is not None:
-            if self.actInd.dtype == 'bool':
-                inds = np.asarray([inds for inds,
-                                  elem in enumerate(self.actInd, 1) if elem],
-                                  dtype=int) - 1
-            else:
-                inds = self.actInd
-
-        else:
-
-            inds = np.asarray(range(self.mesh.nC))
-
-        nC = len(inds)
-
-        # Create active cell projector
-        P = sp.csr_matrix((np.ones(nC), (inds, range(nC))),
-                          shape=(self.mesh.nC, nC))
-
-        # Create vectors of nodal location
-        # (lower and upper coners for each cell)
-        if isinstance(self.mesh, Mesh.TreeMesh):
-            # Get upper and lower corners of each cell
-            bsw = (self.mesh.gridCC - self.mesh.h_gridded/2.)
-            tne = (self.mesh.gridCC + self.mesh.h_gridded/2.)
-
-            xn1, xn2 = bsw[:, 0], tne[:, 0]
-            yn1, yn2 = bsw[:, 1], tne[:, 1]
-            zn1, zn2 = bsw[:, 2], tne[:, 2]
-
-        else:
-
-            xn = self.mesh.vectorNx
-            yn = self.mesh.vectorNy
-            zn = self.mesh.vectorNz
-
-            yn2, xn2, zn2 = np.meshgrid(yn[1:], xn[1:], zn[1:])
-            yn1, xn1, zn1 = np.meshgrid(yn[:-1], xn[:-1], zn[:-1])
-
-        # If equivalent source, use semi-infite prism
-        if self.equiSourceLayer:
-            zn1 -= 1000.
-
-        self.Yn = P.T*np.c_[mkvc(yn1), mkvc(yn2)]
-        self.Xn = P.T*np.c_[mkvc(xn1), mkvc(xn2)]
-        self.Zn = P.T*np.c_[mkvc(zn1), mkvc(zn2)]
 
         # survey = self.survey
         self.rxLoc = self.survey.srcField.rxList[0].locs
@@ -381,7 +386,7 @@ class MagneticIntegral(Problem.LinearProblem):
         else:
             raise Exception('magType must be: "H0" or "full"')
 
-                # Loop through all observations and create forward operator (nD-by-nC)
+        # Loop through all observations and create forward operator (nD-by-nC)
         print("Begin forward: M=" + magType + ", Rx type= " + self.rx_type)
 
         # Switch to determine if the process has to be run in parallel
