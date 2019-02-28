@@ -7,7 +7,8 @@ import numpy as np
 import scipy.sparse as sp
 from six import integer_types
 import warnings
-
+import dask
+import dask.array as da
 from discretize.Tests import checkDerivative
 
 from . import Utils
@@ -319,17 +320,26 @@ class ComboObjectiveFunction(BaseObjectiveFunction):
 
     def __call__(self, m, f=None):
 
-        fct = 0.
+        @dask.delayed
+        def rowSum(arr):
+            sumIt = 0
+            for i in range(len(arr)):
+                sumIt += arr[i]
+            return sumIt
+
+        fct = []
         for i, phi in enumerate(self):
             multiplier, objfct = phi
             if multiplier == 0.: # don't evaluate the fct
                 continue
             else:
                 if f is not None and objfct._hasFields:
-                    fct += multiplier * objfct(m, f=f[i])
+                    fct += [multiplier * objfct(m, f=f[i])]
                 else:
-                    fct += multiplier * objfct(m)
-        return fct
+                    fct += [multiplier * objfct(m)]
+
+        return rowSum(fct).compute()
+
 
     def deriv(self, m, f=None):
         """
@@ -340,17 +350,25 @@ class ComboObjectiveFunction(BaseObjectiveFunction):
         :param numpy.ndarray m: model
         :param SimPEG.Fields f: Fields object (if applicable)
         """
-        g = Utils.Zero()
+
+        @dask.delayed
+        def rowSum(arr):
+            sumIt = 0
+            for i in range(len(arr)):
+                sumIt += arr[i]
+            return sumIt
+
+        g = []
         for i, phi in enumerate(self):
             multiplier, objfct = phi
-            if multiplier == 0.: # don't evaluate the fct
+            if multiplier == 0.:  # don't evaluate the fct
                 continue
             else:
                 if f is not None and objfct._hasFields:
-                    g += multiplier * objfct.deriv(m, f=f[i])
+                    g += [multiplier * objfct.deriv(m, f=f[i])]
                 else:
-                    g += multiplier * objfct.deriv(m)
-        return g
+                    g += [multiplier * objfct.deriv(m)]
+        return rowSum(g).compute()
 
     def deriv2(self, m, v=None, f=None):
         """
@@ -362,18 +380,26 @@ class ComboObjectiveFunction(BaseObjectiveFunction):
         :param numpy.ndarray v: vector we are multiplying by
         :param SimPEG.Fields f: Fields object (if applicable)
         """
-        H = Utils.Zero()
+        @dask.delayed
+        def rowSum(arr):
+            sumIt = 0
+            for i in range(len(arr)):
+                sumIt += arr[i]
+            return sumIt
+
+        H = []
         for i, phi in enumerate(self):
             multiplier, objfct = phi
-            if multiplier == 0.: # don't evaluate the fct
+            if multiplier == 0.:  # don't evaluate the fct
                 continue
             else:
                 if f is not None and objfct._hasFields:
-                    objfct_H = objfct.deriv2(m, v, f=f[i])
+
+                    H += [multiplier * objfct.deriv2(m, v, f=f[i])]
                 else:
-                    objfct_H = objfct.deriv2(m, v)
-                H = H + multiplier * objfct_H
-        return H
+                    H += [multiplier * objfct.deriv2(m, v)]
+
+        return rowSum(H).compute()
 
     # This assumes all objective functions have a W.
     # The base class currently does not.

@@ -9,6 +9,8 @@ import properties
 import numpy as np
 import scipy.sparse as sp
 import gc
+import dask
+import dask.array as da
 
 
 class BaseInvProblem(Props.BaseSimPEG):
@@ -156,16 +158,24 @@ class BaseInvProblem(Props.BaseSimPEG):
         return f
 
     def get_dpred(self, m, f):
+
         if isinstance(self.dmisfit, DataMisfit.BaseDataMisfit):
             return self.dmisfit.survey.dpred(m, f=f)
         elif isinstance(self.dmisfit, ObjectiveFunction.BaseObjectiveFunction):
             dpred = []
+            index = []
             for i, objfct in enumerate(self.dmisfit.objfcts):
                 if hasattr(objfct, 'survey'):
                     dpred += [objfct.survey.dpred(m, f=f[i])]
+                    index += [np.where(objfct.survey.ind)]
                 else:
                     dpred += []
-            return dpred
+                    index += []
+
+            dpred = da.hstack(dpred).compute()
+            index = np.hstack(index)
+
+            return dpred[index]
 
     @Utils.timeIt
     def evalFunction(self, m, return_g=True, return_H=True):
@@ -191,16 +201,21 @@ class BaseInvProblem(Props.BaseSimPEG):
 
         out = (phi,)
         if return_g:
-            phi_dDeriv = self.dmisfit.deriv(m, f=f)
-            phi_mDeriv = self.reg.deriv(m)
+            phi_dDeriv = np.squeeze(self.dmisfit.deriv(m, f=f))
+            phi_mDeriv = np.squeeze(self.reg.deriv(m))
 
             g = phi_dDeriv + self.beta * phi_mDeriv
             out += (g,)
 
         if return_H:
             def H_fun(v):
-                phi_d2Deriv = self.dmisfit.deriv2(m, v, f=f)
-                phi_m2Deriv = self.reg.deriv2(m, v=v)
+
+                phi_m2Deriv = np.squeeze(self.reg.deriv2(m, v=v))
+                if isinstance(self.dmisfit.deriv2(m, v, f=f), dask.array.Array):
+                    phi_d2Deriv = self.dmisfit.deriv2(m, v, f=f)
+                else:
+
+                    phi_d2Deriv = np.squeeze(self.dmisfit.deriv2(m, v, f=f))
 
                 return phi_d2Deriv + self.beta * phi_m2Deriv
 
