@@ -1,7 +1,9 @@
 from __future__ import print_function
 import numpy as np
 import properties
-
+from scipy.sparse import csr_matrix as csr
+import dask
+import dask.array as da
 from . import Utils
 from . import Survey
 from . import ObjectiveFunction
@@ -122,8 +124,11 @@ class l2_DataMisfit(BaseDataMisfit):
         "__call__(m, f=None)"
         if f is None:
             f = self.prob.fields(m)
-        R = self.W * self.survey.residual(m, f)
-        return 0.5*np.vdot(R, R)
+
+        W_res = dask.delayed(csr.dot)(self.W, self.survey.residual(m, f))
+        vec = da.from_delayed(W_res, dtype=float, shape=[self.W.shape[1]])
+#        R = self.W * self.survey.residual(m, f)
+        return 0.5*da.dot(vec,vec)
 
     @Utils.timeIt
     def deriv(self, m, f=None):
@@ -142,9 +147,17 @@ class l2_DataMisfit(BaseDataMisfit):
         """
         if f is None:
             f = self.prob.fields(m)
-        return self.prob.Jtvec(
-            m, self.W.T * (self.W * self.survey.residual(m, f=f)), f=f
-        )
+
+        w_d = dask.delayed(csr.dot)(
+                self.W, self.survey.residual(m, f=f)
+            )
+
+        wtw_d = dask.delayed(csr.dot)(
+                self.W.T, self.scale * w_d
+            )
+
+        row = da.from_delayed(wtw_d, dtype=float, shape=[self.W.shape[0]])
+        return self.prob.Jtvec(m, row, f=f)
 
     @Utils.timeIt
     def deriv2(self, m, v, f=None):
@@ -161,9 +174,16 @@ class l2_DataMisfit(BaseDataMisfit):
         """
         if f is None:
             f = self.prob.fields(m)
-        return self.prob.Jtvec_approx(
-            m, self.W * (self.W * self.prob.Jvec_approx(m, v, f=f)), f=f
-        )
 
+        jtvec = self.prob.Jvec_approx(m, v, f=f)
 
+        w_jtvec = dask.delayed(csr.dot)(
+                self.W, jtvec
+            )
 
+        wtw_jtvec = dask.delayed(csr.dot)(
+                self.W.T, w_jtvec
+            )
+
+        row = da.from_delayed(wtw_jtvec, dtype=float, shape=[self.W.shape[0]])
+        return self.prob.Jtvec_approx(m, row, f=f)

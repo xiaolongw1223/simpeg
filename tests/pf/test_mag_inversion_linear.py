@@ -85,7 +85,7 @@ class MagInvLinProblemTest(unittest.TestCase):
         survey.pair(prob)
 
         # Compute linear forward operator and compute some data
-        d = prob.fields(self.model)
+        d = prob.fields(self.model).compute()
 
         # Add noise and uncertainties (1nT)
         data = d + np.random.randn(len(d))
