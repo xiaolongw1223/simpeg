@@ -1,9 +1,11 @@
 from __future__ import print_function
 import os
 import shutil
+import multiprocessing
 import numpy as np
 import scipy.sparse as sp
 from scipy.constants import mu_0
+from scipy.sparse import csr_matrix as csr
 import dask
 import dask.array as da
 from dask.diagnostics import ProgressBar
@@ -36,7 +38,10 @@ class MagneticIntegral(Problem.LinearProblem):
     gtgdiag = None
     memory_saving_mode = False
     n_cpu = None
+    maxRAM = 1  # Maximum memory usage
+    n_chunks = 1
     parallelized = False
+    Jpath = "./sensitivity.zarr"
     coordinate_system = properties.StringChoice(
         "Type of coordinate system we are regularizing in",
         choices=['cartesian', 'spherical'],
@@ -103,38 +108,42 @@ class MagneticIntegral(Problem.LinearProblem):
         self.Yn = P.T*np.c_[mkvc(yn1), mkvc(yn2)]
         self.Xn = P.T*np.c_[mkvc(xn1), mkvc(xn2)]
         self.Zn = P.T*np.c_[mkvc(zn1), mkvc(zn2)]
+
     def fields(self, m):
 
         if self.coordinate_system == 'cartesian':
             m = self.chiMap*(m)
         else:
-            m = self.chiMap*(matutils.spherical2cartesian(m.reshape((int(len(m)/3), 3), order='F')))
+            m = self.chiMap*(matutils.atp2xyz(m.reshape((int(len(m)/3), 3), order='F')))
 
         if self.forwardOnly:
             # Compute the linear operation without forming the full dense F
-            fields = self.Intrgl_Fwr_Op(m=m)
+            return np.array(self.Intrgl_Fwr_Op(m=m, magType=self.magType), dtype='float')
+
+        # else:
+
+        if getattr(self, '_Mxyz', None) is not None:
+
+            vec = dask.delayed(csr.dot)(self.Mxyz, m)
+            M = da.from_delayed(vec, dtype=float, shape=[m.shape[0]])
+            fields = da.dot(self.G, M)
 
         else:
 
-            if getattr(self, '_Mxyz', None) is not None:
+            fields = da.dot(self.G, m.astype(np.float32))
 
-                fields = np.dot(self.G, (self.Mxyz*m).astype(np.float32))
+        if self.modelType == 'amplitude':
 
-            else:
-                fields = np.dot(self.G, m.astype(np.float32))
+            fields = self.calcAmpData(fields)
 
-            if self.modelType == 'amplitude':
-
-                fields = self.calcAmpData(fields.astype(np.float64))
-
-        return fields.astype(np.float64)
+        return fields
 
     def calcAmpData(self, Bxyz):
         """
             Compute amplitude of the field
         """
 
-        amplitude = np.sum(
+        amplitude = da.sum(
             Bxyz.reshape((3, self.nD), order='F')**2., axis=0
         )**0.5
 
@@ -150,8 +159,7 @@ class MagneticIntegral(Problem.LinearProblem):
             if self.modelType == 'vector':
                 self.magType = 'full'
 
-            self._G = self.Intrgl_Fwr_Op(magType=self.magType,
-                                         rx_type=self.rx_type)
+            self._G = self.Intrgl_Fwr_Op(magType=self.magType)
 
         return self._G
 
@@ -194,78 +202,107 @@ class MagneticIntegral(Problem.LinearProblem):
             else:
                 w = W.diagonal()
 
-            self.gtgdiag = np.zeros(dmudm.shape[1])
+            # self.gtgdiag = np.zeros(dmudm.shape[1])
 
-            for ii in range(self.G.shape[0]):
+            # for ii in range(self.G.shape[0]):
 
-                self.gtgdiag += (w[ii]*self.G[ii, :]*dmudm)**2.
+            self.gtgdiag = da.sum(self.G**2., 0).compute()
+
+            # self.gtgdiag = np.array(da.sum(da.power(self.G, 2), axis=0))
 
         if self.coordinate_system == 'cartesian':
             if self.modelType == 'amplitude':
-                return np.sum((W * self.dfdm * self.G * dmudm)**2., axis=0)
+                return np.sum((W * self.dfdm * sdiag(mkvc(self.gtgdiag)**0.5) * dmudm).power(2.), axis=0)
             else:
-                return self.gtgdiag
+                return mkvc(np.sum((sdiag(mkvc(self.gtgdiag)**0.5) * dmudm).power(2.), axis=0))
 
         else:  # spherical
             if self.modelType == 'amplitude':
-                return np.sum(((W * self.dfdm) * self.G * (self.dSdm * dmudm))**2., axis=0)
+                return mkvc(np.sum(((W * self.dfdm) * sdiag(mkvc(self.gtgdiag)**0.5) * (self.dSdm * dmudm)).power(2.), axis=0))
             else:
-                Japprox = sdiag(mkvc(self.gtgdiag)**0.5*dmudm.T) * (self.dSdm * dmudm)
-                return mkvc(np.sum(Japprox.power(2), axis=0))
+
+                #Japprox = sdiag(mkvc(self.gtgdiag)**0.5*dmudm) * (self.dSdm * dmudm)
+                return mkvc(np.sum((sdiag(mkvc(self.gtgdiag)**0.5) * self.dSdm * dmudm).power(2), axis=0))
 
     def getJ(self, m, f=None):
         """
             Sensitivity matrix
         """
+
         if self.coordinate_system == 'cartesian':
             dmudm = self.chiMap.deriv(m)
         else:  # spherical
             dmudm = self.dSdm * self.chiMap.deriv(m)
 
         if self.modelType == 'amplitude':
-            return self.dfdm * (self.G * dmudm)
+            return self.dfdm * da.dot(self.G, dmudm)
         else:
-            return self.G * dmudm
+
+            prod = dask.delayed(
+                csr.dot)(
+                    self.G, dmudm
+                )
+            return da.from_delayed(
+                prod, dtype=float,
+                shape=(self.G.shape[0], dmudm.shape[1])
+            )
 
     def Jvec(self, m, v, f=None):
 
         if self.coordinate_system == 'cartesian':
             dmudm = self.chiMap.deriv(m)
         else:
-            dmudm = self.dSdm * self.chiMap.deriv(m)
+            dmudm = dask.delayed(csr.dot)(self.dSdm, self.chiMap.deriv(m))
 
         if getattr(self, '_Mxyz', None) is not None:
 
-            vec = np.dot(self.G, (self.Mxyz*(dmudm*v)).astype(np.float32))
+            dmudm_v = dask.delayed(csr.dot)(dmudm, v)
+            vec = dask.delayed(csr.dot)(self.Mxyz, dmudm_v)
+            M_dmudm_v = da.from_delayed(vec, dtype=float, shape=[self.Mxyz.shape[0]])
+
+            Jvec = da.dot(self.G, M_dmudm_v.astype(np.float32))
 
         else:
-            vec = np.dot(self.G, (dmudm*v).astype(np.float32))
+
+            vec = dask.delayed(csr.dot)(dmudm, v)
+            dmudm_v = da.from_delayed(vec, dtype=float, shape=[self.chiMap.deriv(m).shape[0]])
+            Jvec = da.dot(self.G, dmudm_v.astype(np.float32))
 
         if self.modelType == 'amplitude':
-            return self.dfdm*vec.astype(np.float64)
+            dfdm_Jvec = dask.delayed(csr.dot)(self.dfdm, Jvec)
+
+            return da.from_delayed(dfdm_Jvec, dtype=float, shape=[self.dfdm.shape[0]])
         else:
-            return vec.astype(np.float64)
+            return Jvec
 
     def Jtvec(self, m, v, f=None):
 
-        if self.coordinate_system == 'spherical':
-            dmudm = self.dSdm * self.chiMap.deriv(m)
-        else:
+        if self.coordinate_system == 'cartesian':
             dmudm = self.chiMap.deriv(m)
+        else:
+            dmudm = dask.delayed(csr.dot)(self.dSdm, self.chiMap.deriv(m))
 
         if self.modelType == 'amplitude':
+
+            dfdm_v = dask.delayed(csr.dot)(self.dfdm.T, v)
+            vec = da.from_delayed(dfdm_v, dtype=float, shape=[self.dfdm.shape[0]])
+
             if getattr(self, '_Mxyz', None) is not None:
 
-                vec = self.Mxyz.T*np.dot(self.G.T, (self.dfdm.T*v).astype(np.float32)).astype(np.float64)
+                jtvec = da.dot(self.G.T, vec.astype(np.float32))
+
+                Jtvec = dask.delayed(csr.dot)(self.Mxyz.T, jtvec)
 
             else:
-                vec = np.dot(self.G.T, (self.dfdm.T*v).astype(np.float32))
+                Jtvec = da.dot(self.G.T, vec.astype(np.float32))
 
         else:
 
-            vec = np.dot(self.G.T, v.astype(np.float32))
+            Jtvec = da.dot(self.G.T, v.astype(np.float32))
 
-        return dmudm.T * vec.astype(np.float64)
+        dmudm_v = dask.delayed(csr.dot)(dmudm.T, Jtvec)
+
+        return da.from_delayed(dmudm_v, dtype=float, shape=[self.chiMap.deriv(m).shape[1]])
 
     @property
     def dSdm(self):
@@ -277,10 +314,10 @@ class MagneticIntegral(Problem.LinearProblem):
 
             nC = int(len(self.model)/3)
 
-            m_xyz = self.chiMap * matutils.spherical2cartesian(self.model.reshape((nC, 3), order='F'))
+            m_xyz = self.chiMap * matutils.atp2xyz(self.model.reshape((nC, 3), order='F'))
 
             nC = int(m_xyz.shape[0]/3.)
-            m_atp = matutils.cartesian2spherical(m_xyz.reshape((nC, 3), order='F'))
+            m_atp = matutils.xyz2atp(m_xyz.reshape((nC, 3), order='F'))
 
             a = m_atp[:nC]
             t = m_atp[nC:2*nC]
@@ -296,7 +333,7 @@ class MagneticIntegral(Problem.LinearProblem):
 
             Sz = sp.hstack([sp.diags(np.sin(t), 0),
                             sp.diags(a*np.cos(t), 0),
-                            sp.csr_matrix((nC, nC))])
+                            csr((nC, nC))])
 
             self._dSdm = sp.vstack([Sx, Sy, Sz])
 
@@ -326,7 +363,7 @@ class MagneticIntegral(Problem.LinearProblem):
             jj = np.asarray(range(3*self.survey.nD), dtype='int')
             # (data, (row, col)), shape=(3, 3))
             # P = s
-            self._dfdm = sp.csr_matrix(( mkvc(Bxyz), (ii,jj)), shape=(self.survey.nD, 3*self.survey.nD))
+            self._dfdm = csr((mkvc(Bxyz), (ii, jj)), shape=(self.survey.nD, 3*self.survey.nD))
 
         return self._dfdm
 
@@ -340,9 +377,9 @@ class MagneticIntegral(Problem.LinearProblem):
             m = matutils.atp2xyz(m)
 
         if getattr(self, '_Mxyz', None) is not None:
-            Bxyz = np.dot(self.G, (self.Mxyz*m).astype(np.float32))
+            Bxyz = da.dot(self.G, (self.Mxyz*m).astype(np.float32))
         else:
-            Bxyz = np.dot(self.G, m.astype(np.float32))
+            Bxyz = da.dot(self.G, m.astype(np.float32))
 
         amp = self.calcAmpData(Bxyz.astype(np.float64))
         Bamp = sp.spdiags(1./amp, 0, self.nD, self.nD)
@@ -364,14 +401,13 @@ class MagneticIntegral(Problem.LinearProblem):
         if m is not None:
             self.model = self.chiMap*m
 
-
         # survey = self.survey
         self.rxLoc = self.survey.srcField.rxList[0].locs
 
         if magType == 'H0':
             if getattr(self, 'M', None) is None:
-                self.M = matutils.dip_azimuth2cartesian(np.ones(nC) * self.survey.srcField.param[1],
-                                      np.ones(nC) * self.survey.srcField.param[2])
+                self.M = matutils.dip_azimuth2cartesian(np.ones(self.nC) * self.survey.srcField.param[1],
+                                      np.ones(self.nC) * self.survey.srcField.param[2])
 
             Mx = sdiag(self.M[:, 0] * self.survey.srcField.param[0])
             My = sdiag(self.M[:, 1] * self.survey.srcField.param[0])
@@ -381,10 +417,11 @@ class MagneticIntegral(Problem.LinearProblem):
 
         elif magType == 'full':
 
-            self.Mxyz = sp.identity(3*nC) * self.survey.srcField.param[0]
-
+            self.Mxyz = sp.identity(3*self.nC) * self.survey.srcField.param[0]
         else:
             raise Exception('magType must be: "H0" or "full"')
+
+                # Loop through all observations and create forward operator (nD-by-self.nC)
 
         # Loop through all observations and create forward operator (nD-by-nC)
         print("Begin forward: M=" + magType + ", Rx type= " + self.rx_type)
@@ -394,7 +431,9 @@ class MagneticIntegral(Problem.LinearProblem):
                 rxLoc=self.rxLoc, Xn=self.Xn, Yn=self.Yn, Zn=self.Zn,
                 n_cpu=self.n_cpu, forwardOnly=self.forwardOnly,
                 model=self.model, rx_type=self.rx_type, Mxyz=self.Mxyz,
-                P=self.ProjTMI, parallelized=self.parallelized
+                P=self.ProjTMI, parallelized=self.parallelized,
+                n_chunks=self.n_chunks,
+                Jpath=self.Jpath, maxRAM=self.maxRAM
                 )
 
         G = job.calculate()
@@ -405,7 +444,7 @@ class MagneticIntegral(Problem.LinearProblem):
 class Forward(object):
 
     progressIndex = -1
-    parallelized = False
+    parallelized = "dask"
     rxLoc = None
     Xn, Yn, Zn = None, None, None
     n_cpu = None
@@ -414,6 +453,10 @@ class Forward(object):
     rx_type = 'z'
     Mxyz = None
     P = None
+    n_chunks = 1
+    verbose = True
+    maxRAM = 1
+    Jpath = "./sensitivity.zarr"
 
     def __init__(self, **kwargs):
         super(Forward, self).__init__()
@@ -421,32 +464,121 @@ class Forward(object):
 
     def calculate(self):
         self.nD = self.rxLoc.shape[0]
+        self.nC = self.Mxyz.shape[1]
+
+        if self.n_cpu is None:
+            self.n_cpu = int(multiprocessing.cpu_count())
+
+        # Set this early so we can get a better memory estimate for dask chunking
+        if self.rx_type == 'xyz':
+            nDataComps = 3
+        else:
+            nDataComps = 1
 
         if self.parallelized:
-            if self.n_cpu is None:
 
-                # By default take half the cores, turns out be faster
-                # than running full threads
-                self.n_cpu = int(multiprocessing.cpu_count()/2)
+            assert self.parallelized in ["dask", None], (
+                "'parallelization' must be 'dask', or None"
+                "Value provided -> "
+                "{}".format(
+                    self.parallelized)
 
-            pool = multiprocessing.Pool(self.n_cpu)
+            )
 
-            result = pool.map(self.calcTrow, [self.rxLoc[ii, :] for ii in range(self.nD)])
-            pool.close()
-            pool.join()
+            if self.parallelized:
+
+                # Chunking only required for dask
+                nChunks = self.n_chunks  # Number of chunks
+                rowChunk = int(np.ceil(nDataComps*self.nD/nChunks))
+                colChunk = int(np.ceil(self.nC/nChunks))  # Chunk sizes
+                totRAM = rowChunk*colChunk*8*self.n_cpu*1e-9
+
+                # Ensure total problem size fits in RAM,
+                # and avoid 2GB size limit on dask chunks
+                while totRAM > self.maxRAM or (totRAM/self.n_cpu) >= 2.0:
+
+                    nChunks += 1
+                    rowChunk = int(np.ceil(nDataComps*self.nD/nChunks))
+                    colChunk = int(np.ceil(self.nC/nChunks))  # Chunk sizes
+                    totRAM = rowChunk*colChunk*8*self.n_cpu*1e-9
+
+                print("Dask:")
+                print("n_cpu: ", self.n_cpu)
+                print("n_chunks: ", nChunks)
+                print("Chunk sizes: ", rowChunk, colChunk)
+                print("RAM/tile: ", totRAM/self.n_cpu)
+                print("Total RAM (x n_cpu): ", totRAM)
+
+                row = dask.delayed(self.calcTrow, pure=True)
+
+                makeRows = [row(self.rxLoc[ii, :]) for ii in range(self.nD)]
+
+                buildMat = [
+                    da.from_delayed(
+                        makeRow, dtype=float, shape=(nDataComps,  self.nC)
+                        ) for makeRow in makeRows
+                ]
+
+                stack = da.vstack(buildMat)
+
+                if self.forwardOnly:
+
+                    return da.dot(stack, self.model).compute()
+
+                else:
+
+                    if os.path.exists(self.Jpath):
+
+                        G = da.from_zarr(self.Jpath)
+
+                        if np.all(np.r_[
+                                np.any(np.r_[G.chunks[0]] == rowChunk),
+                                np.any(np.r_[G.chunks[1]] == colChunk),
+                                np.r_[G.shape] == np.r_[nDataComps*self.nD,  self.nC]]):
+                            # Check that loaded G matches supplied data and mesh
+                            print(
+                                "Zarr file detected with same shape"
+                                " and chunksize ... re-loading"
+                            )
+                            return G
+
+                        else:
+                            del G
+                            shutil.rmtree(self.Jpath)
+                            print(
+                                "Zarr file detected with wrong shape"
+                                " and chunksize ... over-writting"
+                            )
+
+                    stack = stack.rechunk((rowChunk, colChunk))
+
+                    with ProgressBar():
+                        print("Saving G to zarr: " + self.Jpath)
+                        da.to_zarr(stack, self.Jpath)
+
+                    G = da.from_zarr(self.Jpath)
 
         else:
 
             result = []
             for ii in range(self.nD):
-                result += [self.calcTrow(self.rxLoc[ii, :])]
+
+                if self.forwardOnly:
+                    result += [
+                        np.c_[
+                            np.dot(
+                                self.calcTrow(self.rxLoc[ii, :]),
+                                self.model
+                            )
+                        ]
+                    ]
+                else:
+                    result += [self.calcTrow(self.rxLoc[ii, :])]
                 self.progress(ii, self.nD)
 
-        if self.forwardOnly:
-            return mkvc(np.vstack(result))
+            G = np.vstack(result)
 
-        else:
-            return np.vstack(result)
+        return G
 
     def calcTrow(self, xyzLoc):
         """
@@ -484,11 +616,7 @@ class Forward(object):
         else:
             raise Exception('rx_type must be: "tmi", "x", "y" or "z"')
 
-        if self.forwardOnly:
-
-            return np.dot(row, self.model)
-        else:
-            return np.float32(row)
+        return np.float32(row)
 
     def progress(self, ind, total):
         """
@@ -503,7 +631,9 @@ class Forward(object):
         """
         arg = np.floor(ind/total*10.)
         if arg > self.progressIndex:
-            print("Done " + str(arg*10) + " %")
+
+            if self.verbose:
+                print("Done " + str(arg*10) + " %")
             self.progressIndex = arg
 
 
