@@ -330,9 +330,9 @@ def meshBuilder(xyz, h, padDist, meshGlobal=None,
 
         # Set origin
         if verticalAlignment == 'center':
-            mesh.x0 = np.r_[center[0] - (nCx-1)*h[0]/2., center[1] - (nCy-1)*h[1]/2., center[2] - (nCz-1)*h[2]/2.]
+            mesh.x0 = np.r_[center[0] - (nCx)*h[0]/2., center[1] - (nCy)*h[1]/2., center[2] - (nCz)*h[2]/2.]
         elif verticalAlignment == 'top':
-            mesh.x0 = np.r_[center[0] - (nCx-1)*h[0]/2., center[1] - (nCy-1)*h[1]/2., center[2] - (nCz-1)*h[2]]
+            mesh.x0 = np.r_[center[0] - (nCx)*h[0]/2., center[1] - (nCy)*h[1]/2., center[2] - (nCz)*h[2]]
         else:
             assert NotImplementedError("verticalAlignment must be 'center' | 'top'")
 
