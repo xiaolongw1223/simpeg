@@ -363,11 +363,16 @@ def refineTree(
 
         mesh.insert_cells(xyz, np.ones(xyz.shape[0])*maxLevel, finalize=False)
 
-        stencil = np.r_[
-                np.ones(octreeLevels[0]),
-                np.ones(octreeLevels[1])*2,
-                np.ones(octreeLevels[2])*3
-            ]
+        # stencil = np.r_[
+        #         np.ones(octreeLevels[0]),
+        #         np.ones(octreeLevels[1])*2,
+        #         np.ones(octreeLevels[2])*3
+        #     ]
+
+        stencil = []
+        for ii, level in enumerate(octreeLevels):
+            stencil.append(np.ones(octreeLevels[ii])*(ii+1))
+        stencil = np.hstack(stencil)
 
         # Reflect in the opposite direction
         vec = np.r_[stencil[::-1], 1, stencil]
