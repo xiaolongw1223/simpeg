@@ -344,7 +344,8 @@ def refineTree(
             finalize=False, dtype="radial",
             octreeLevels=[1, 1, 1],
             octreeLevels_XY=None,
-            maxDist=np.inf
+            maxDist=np.inf,
+            maxLevel=None
 ):
 
     if octreeLevels_XY is not None:
@@ -355,7 +356,8 @@ def refineTree(
 
         octreeLevels_XY = np.zeros_like(octreeLevels)
 
-    maxLevel = int(np.log2(mesh.hx.shape[0]))
+    if maxLevel is None:
+        maxLevel = int(np.log2(mesh.hx.shape[0]))
 
     tree = cKDTree(xyz)
 
@@ -363,16 +365,11 @@ def refineTree(
 
         mesh.insert_cells(xyz, np.ones(xyz.shape[0])*maxLevel, finalize=False)
 
-        # stencil = np.r_[
-        #         np.ones(octreeLevels[0]),
-        #         np.ones(octreeLevels[1])*2,
-        #         np.ones(octreeLevels[2])*3
-        #     ]
-
-        stencil = []
-        for ii, level in enumerate(octreeLevels):
-            stencil.append(np.ones(octreeLevels[ii])*(ii+1))
-        stencil = np.hstack(stencil)
+        stencil = np.r_[
+                np.ones(octreeLevels[0]),
+                np.ones(octreeLevels[1])*2,
+                np.ones(octreeLevels[2])*3
+        ]
 
         # Reflect in the opposite direction
         vec = np.r_[stencil[::-1], 1, stencil]
