@@ -1111,7 +1111,7 @@ def calcRow(
     arg12 = dx2 + dz1 + r3
     arg13 = dx2 + r3
     arg14 = dy2 + r3
-    arg15 = dz2 + r3
+    arg15 = dz1 + r3
 
     arg16_ = dx1 + dy2 + r4
     arg16 = dy2 + dz1 + r4
@@ -1156,21 +1156,21 @@ def calcRow(
             dbx_dx = np.zeros((1, 3 * nC))
 
             dbx_dx[0, 0:nC] = (2 * (((dx1**2 - r1 * arg1) / (r1 * arg1**2 + dx1**2 * r1 + eps)) -
-                            ((dx2**2 - r2 * arg6) / (r2 * arg6**2 + dx2**2 * r2 + eps)) +
-                            ((dx2**2 - r3 * arg11) / (r3 * arg11**2 + dx2**2 * r3 + eps)) -
-                            ((dx1**2 - r4 * arg16) / (r4 * arg16**2 + dx1**2 * r4 + eps)) +
-                            ((dx2**2 - r5 * arg21) / (r5 * arg21**2 + dx2**2 * r5 + eps)) -
-                            ((dx1**2 - r6 * arg26) / (r6 * arg26**2 + dx1**2 * r6 + eps)) +
-                            ((dx1**2 - r7 * arg31) / (r7 * arg31**2 + dx1**2 * r7 + eps)) -
-                            ((dx2**2 - r8 * arg36) / (r8 * arg36**2 + dx2**2 * r8 + eps))))
-            dbx_dx[0, nC:2*nC] = (dx1 / (r1 * arg5 + eps) - dx2 / (r2 * arg10 + eps) +
-                               dx2 / (r3 * arg15 + eps) - dx1 / (r4 * arg20 + eps) +
-                               dx2 / (r5 * arg25 + eps) - dx1 / (r6 * arg30 + eps) +
-                               dx1 / (r7 * arg35 + eps) - dx2 / (r8 * arg40) + eps)
+                        ((dx2**2 - r2 * arg6) / (r2 * arg6**2 + dx2**2 * r2 + eps)) +
+                        ((dx2**2 - r3 * arg11) / (r3 * arg11**2 + dx2**2 * r3 + eps)) -
+                        ((dx1**2 - r4 * arg16) / (r4 * arg16**2 + dx1**2 * r4 + eps)) +
+                        ((dx2**2 - r5 * arg21) / (r5 * arg21**2 + dx2**2 * r5 + eps)) -
+                        ((dx1**2 - r6 * arg26) / (r6 * arg26**2 + dx1**2 * r6 + eps)) +
+                        ((dx1**2 - r7 * arg31) / (r7 * arg31**2 + dx1**2 * r7 + eps)) -
+                        ((dx2**2 - r8 * arg36) / (r8 * arg36**2 + dx2**2 * r8 + eps))))
+            dbx_dx[0, nC:2*nC] = (dx2 / (r5 * arg25 + eps) - dx2 / (r2 * arg10 + eps) +
+                           dx2 / (r3 * arg15 + eps) - dx2 / (r8 * arg40 + eps) +
+                           dx1 / (r1 * arg5 + eps) - dx1 / (r6 * arg30 + eps) +
+                           dx1 / (r7 * arg35 + eps) - dx1 / (r4 * arg20 + eps))
             dbx_dx[0, 2*nC:] = (dx1 / (r1 * arg4 + eps) - dx2 / (r2 * arg9 + eps) +
-                             dx2 / (r3 * arg14 + eps) - dx1 / (r4 * arg19 + eps) +
-                             dx2 / (r5 * arg24 + eps) - dx1 / (r6 * arg29 + eps) +
-                             dx1 / (r7 * arg34 + eps) - dx2 / (r8 * arg39 + eps))
+                         dx2 / (r3 * arg14 + eps) - dx1 / (r4 * arg19 + eps) +
+                         dx2 / (r5 * arg24 + eps) - dx1 / (r6 * arg29 + eps) +
+                         dx1 / (r7 * arg34 + eps) - dx2 / (r8 * arg39 + eps))
 
             dbx_dx /= (4 * np.pi)
 
@@ -1178,22 +1178,22 @@ def calcRow(
             # dby_dy
             dby_dy = np.zeros((1, 3 * nC))
 
-            dby_dy[0, 0:nC] = (dy2 / (r1 * arg5 + eps) - dy2 / (r2 * arg10 + eps) +
-                            dy2 / (r3 * arg15 + eps) - dy2 / (r4 * arg20 + eps) +
-                            dy1 / (r5 * arg25 + eps) - dy1 / (r6 * arg30 + eps) +
-                        dy1 / (r8 * arg35 + eps) - dy1 / (r8 * arg40 + eps))
+            dby_dy[0, 0:nC] = (dy2 / (r3 * arg15 + eps) - dy2 / (r2 * arg10 + eps) +
+                        dy1 / (r5 * arg25 + eps) - dy1 / (r8 * arg40 + eps) +
+                        dy2 / (r1 * arg5 + eps) - dy2 / (r4 * arg20 + eps) +
+                        dy1 / (r7 * arg35 + eps) - dy1 / (r6 * arg30 + eps))
             dby_dy[0, nC:2*nC] = (2 * (((dy2**2 - r1 * arg2) / (r1 * arg2**2 + dy2**2 * r1 + eps)) -
-                           ((dy2**2 - r2 * arg7) / (r2 * arg7**2 + dy2**2 * r2 + eps)) +
-                           ((dy2**2 - r3 * arg12) / (r3 * arg12**2 + dy2**2 * r3 + eps)) -
-                           ((dy2**2 - r4 * arg17) / (r4 * arg17**2 + dy2**2 * r4 + eps)) +
-                           ((dy1**2 - r5 * arg22) / (r5 * arg22**2 + dy1**2 * r5 + eps)) -
-                           ((dy1**2 - r6 * arg27) / (r6 * arg27**2 + dy1**2 * r6 + eps)) +
-                           ((dy1**2 - r7 * arg32) / (r7 * arg32**2 + dy1**2 * r7 + eps)) -
-                           ((dy1**2 - r8 * arg37) / (r8 * arg37**2 + dy1**2 * r8 + eps))))
+                       ((dy2**2 - r2 * arg7) / (r2 * arg7**2 + dy2**2 * r2 + eps)) +
+                       ((dy2**2 - r3 * arg12) / (r3 * arg12**2 + dy2**2 * r3 + eps)) -
+                       ((dy2**2 - r4 * arg17) / (r4 * arg17**2 + dy2**2 * r4 + eps)) +
+                       ((dy1**2 - r5 * arg22) / (r5 * arg22**2 + dy1**2 * r5 + eps)) -
+                       ((dy1**2 - r6 * arg27) / (r6 * arg27**2 + dy1**2 * r6 + eps)) +
+                       ((dy1**2 - r7 * arg32) / (r7 * arg32**2 + dy1**2 * r7 + eps)) -
+                       ((dy1**2 - r8 * arg37) / (r8 * arg37**2 + dy1**2 * r8 + eps))))
             dby_dy[0, 2*nC:] = (dy2 / (r1 * arg3 + eps) - dy2 / (r2 * arg8 + eps) +
-                             dy2 / (r3 * arg13 + eps) - dy2 / (r4 * arg18 + eps) +
-                             dy1 / (r5 * arg23 + eps) - dy1 / (r6 * arg28 + eps) +
-                             dy1 / (r7 * arg33 + eps) - dy1 / (r8 * arg38 + eps))
+                         dy2 / (r3 * arg13 + eps) - dy2 / (r4 * arg18 + eps) +
+                         dy1 / (r5 * arg23 + eps) - dy1 / (r6 * arg28 + eps) +
+                         dy1 / (r7 * arg33 + eps) - dy1 / (r8 * arg38 + eps))
 
             dby_dy /= (4 * np.pi)
 
@@ -1214,21 +1214,21 @@ def calcRow(
             dbx_dy = np.zeros((1, 3 * nC))
 
             dbx_dy[0, 0:nC] = (2 * (((dx1 * arg4) / (r1 * arg1**2 + (dx1**2) * r1 + eps)) -
-                            ((dx2 * arg9) / (r2 * arg6**2 + (dx2**2) * r2 + eps)) +
-                            ((dx2 * arg14) / (r3 * arg11**2 + (dx2**2) * r3 + eps)) -
-                            ((dx1 * arg19) / (r4 * arg16**2 + (dx1**2) * r4 + eps)) +
-                            ((dx2 * arg24) / (r5 * arg21**2 + (dx2**2) * r5 + eps)) -
-                            ((dx1 * arg29) / (r6 * arg26**2 + (dx1**2) * r6 + eps)) +
-                            ((dx1 * arg34) / (r7 * arg31**2 + (dx1**2) * r7 + eps)) -
-                            ((dx2 * arg39) / (r8 * arg36**2 + (dx2**2) * r8 + eps))))
+                        ((dx2 * arg9) / (r2 * arg6**2 + (dx2**2) * r2 + eps)) +
+                        ((dx2 * arg14) / (r3 * arg11**2 + (dx2**2) * r3 + eps)) -
+                        ((dx1 * arg19) / (r4 * arg16**2 + (dx1**2) * r4 + eps)) +
+                        ((dx2 * arg24) / (r5 * arg21**2 + (dx2**2) * r5 + eps)) -
+                        ((dx1 * arg29) / (r6 * arg26**2 + (dx1**2) * r6 + eps)) +
+                        ((dx1 * arg34) / (r7 * arg31**2 + (dx1**2) * r7 + eps)) -
+                        ((dx2 * arg39) / (r8 * arg36**2 + (dx2**2) * r8 + eps))))
             dbx_dy[0, nC:2*nC] = (dy2 / (r1 * arg5 + eps) - dy2 / (r2 * arg10 + eps) +
-                               dy2 / (r3 * arg15 + eps) - dy2 / (r4 * arg20 + eps) +
-                               dy1 / (r5 * arg25 + eps) - dy1 / (r6 * arg30 + eps) +
-                               dy1 / (r7 * arg35 + eps) - dy1 / (r8 * arg40 + eps))
+                           dy2 / (r3 * arg15 + eps) - dy2 / (r4 * arg20 + eps) +
+                           dy1 / (r5 * arg25 + eps) - dy1 / (r6 * arg30 + eps) +
+                           dy1 / (r7 * arg35 + eps) - dy1 / (r8 * arg40 + eps))
             dbx_dy[0, 2*nC:] = (1 / r1 - 1 / r2 +
-                             1 / r3 - 1 / r4 +
-                             1 / r5 - 1 / r6 +
-                             1 / r7 - 1 / r8)
+                         1 / r3 - 1 / r4 +
+                         1 / r5 - 1 / r6 +
+                         1 / r7 - 1 / r8)
 
             dbx_dy /= (4 * np.pi)
 
@@ -1237,22 +1237,22 @@ def calcRow(
         if comp == "dbx_dz":
             dbx_dz = np.zeros((1, 3 * nC))
 
-            dbx_dz[0, 0:nC] = (2 * (((dx1 * arg5) / (r1 * (arg1**2) + (dx1**2) * r1 + eps)) -
-                            ((dx2 * arg10) / (r2 * (arg6**2) + (dx2**2) * r2 + eps)) +
-                            ((dx2 * arg15) / (r3 * (arg11**2) + (dx2**2) * r3 + eps)) -
-                            ((dx1 * arg20) / (r4 * (arg16**2) + (dx1**2) * r4 + eps)) +
-                            ((dx2 * arg25) / (r5 * (arg21**2) + (dx2**2) * r5 + eps)) -
-                            ((dx1 * arg30) / (r6 * (arg26**2) + (dx1**2) * r6 + eps)) +
-                            ((dx1 * arg35) / (r7 * (arg31**2) + (dx1**2) * r7 + eps)) -
-                            ((dx2 * arg40) / (r8 * (arg36**2) + (dx2**2) * r8 + eps))))
+            dbx_dz[0, 0:nC] =(2 * (((dx1 * arg5) / (r1 * (arg1**2) + (dx1**2) * r1 + eps)) -
+                        ((dx2 * arg10) / (r2 * (arg6**2) + (dx2**2) * r2 + eps)) +
+                        ((dx2 * arg15) / (r3 * (arg11**2) + (dx2**2) * r3 + eps)) -
+                        ((dx1 * arg20) / (r4 * (arg16**2) + (dx1**2) * r4 + eps)) +
+                        ((dx2 * arg25) / (r5 * (arg21**2) + (dx2**2) * r5 + eps)) -
+                        ((dx1 * arg30) / (r6 * (arg26**2) + (dx1**2) * r6 + eps)) +
+                        ((dx1 * arg35) / (r7 * (arg31**2) + (dx1**2) * r7 + eps)) -
+                        ((dx2 * arg40) / (r8 * (arg36**2) + (dx2**2) * r8 + eps))))
             dbx_dz[0, nC:2*nC] = (1 / r1 - 1 / r2 +
-                               1 / r3 - 1 / r4 +
-                               1 / r5 - 1 / r6 +
-                               1 / r7 - 1 / r8)
+                           1 / r3 - 1 / r4 +
+                           1 / r5 - 1 / r6 +
+                           1 / r7 - 1 / r8)
             dbx_dz[0, 2*nC:] = (dz2 / (r1 * arg4 + eps) - dz2 / (r2 * arg9 + eps) +
-                             dz1 / (r3 * arg14 + eps) - dz1 / (r4 * arg19 + eps) +
-                             dz2 / (r5 * arg24 + eps) - dz2 / (r6 * arg29 + eps) +
-                             dz1 / (r7 * arg34 + eps) - dz1 / (r8 * arg39 + eps))
+                         dz1 / (r3 * arg14 + eps) - dz1 / (r4 * arg19 + eps) +
+                         dz2 / (r5 * arg24 + eps) - dz2 / (r6 * arg29 + eps) +
+                         dz1 / (r7 * arg34 + eps) - dz1 / (r8 * arg39 + eps))
 
             dbx_dz /= (4 * np.pi)
 
@@ -1261,22 +1261,22 @@ def calcRow(
         if comp == "dby_dz":
             dby_dz = np.zeros((1, 3 * nC))
 
-            dby_dz[0, 0:nC] = (1 / r1 - 1 / r2 +
-                            1 / r3 - 1 / r4 +
-                            1 / r4 - 1 / r6 +
-                            1 / r6 - 1 / r8)
+            dby_dz[0, 0:nC] = (1 / r3 - 1 / r2 +
+                        1 / r5 - 1 / r8 +
+                        1 / r1 - 1 / r4 +
+                        1 / r7 - 1 / r6)
             dby_dz[0, nC:2*nC] = (2 * ((((dy2 * arg5) / (r1 * (arg2**2) + (dy2**2) * r1 + eps))) -
-                        (((dy2 * arg10) / (r2 * (arg7**2) + (dy2**2) * r2 + eps))) +
-                        (((dy2 * arg15) / (r3 * (arg12**2) + (dy2**2) * r3 + eps))) -
-                        (((dy2 * arg20) / (r4 * (arg17**2) + (dy2**2) * r4 + eps))) +
-                        (((dy1 * arg25) / (r5 * (arg22**2) + (dy1**2) * r5 + eps))) -
-                        (((dy1 * arg30) / (r6 * (arg27**2) + (dy1**2) * r6 + eps))) +
-                        (((dy1 * arg35) / (r7 * (arg32**2) + (dy1**2) * r7 + eps))) -
-                        (((dy1 * arg40) / (r8 * (arg37**2) + (dy1**2) * r8 + eps)))))
+                    (((dy2 * arg10) / (r2 * (arg7**2) + (dy2**2) * r2 + eps))) +
+                    (((dy2 * arg15) / (r3 * (arg12**2) + (dy2**2) * r3 + eps))) -
+                    (((dy2 * arg20) / (r4 * (arg17**2) + (dy2**2) * r4 + eps))) +
+                    (((dy1 * arg25) / (r5 * (arg22**2) + (dy1**2) * r5 + eps))) -
+                    (((dy1 * arg30) / (r6 * (arg27**2) + (dy1**2) * r6 + eps))) +
+                    (((dy1 * arg35) / (r7 * (arg32**2) + (dy1**2) * r7 + eps))) -
+                    (((dy1 * arg40) / (r8 * (arg37**2) + (dy1**2) * r8 + eps)))))
             dby_dz[0, 2*nC:] = (dz2 / (r1 * arg3  + eps) - dz2 / (r2 * arg8 + eps) +
-                         dz1 / (r3 * arg13 + eps) - dz1 / (r4 * arg18 + eps) +
-                         dz2 / (r5 * arg23 + eps) - dz2 / (r6 * arg28 + eps) +
-                         dz1 / (r7 * arg33 + eps) - dz1 / (r8 * arg38 + eps))
+                     dz1 / (r3 * arg13 + eps) - dz1 / (r4 * arg18 + eps) +
+                     dz2 / (r5 * arg23 + eps) - dz2 / (r6 * arg28 + eps) +
+                     dz1 / (r7 * arg33 + eps) - dz1 / (r8 * arg38 + eps))
 
             dby_dz /= (4 * np.pi)
 
@@ -1286,17 +1286,17 @@ def calcRow(
             bx = np.zeros((1, 3 * nC))
 
             bx[0, 0:nC] = ((-2 * np.arctan2(dx1, arg1 + eps)) - (-2 * np.arctan2(dx2, arg6 + eps)) +
-                           (-2 * np.arctan2(dx2, arg11 + eps)) - (-2 * np.arctan2(dx1, arg16 + eps)) +
-                           (-2 * np.arctan2(dx2, arg21 + eps)) - (-2 * np.arctan2(dx1, arg26 + eps)) +
-                           (-2 * np.arctan2(dx1, arg31 + eps)) - (-2 * np.arctan2(dx2, arg36 + eps)))
+                       (-2 * np.arctan2(dx2, arg11 + eps)) - (-2 * np.arctan2(dx1, arg16 + eps)) +
+                       (-2 * np.arctan2(dx2, arg21 + eps)) - (-2 * np.arctan2(dx1, arg26 + eps)) +
+                       (-2 * np.arctan2(dx1, arg31 + eps)) - (-2 * np.arctan2(dx2, arg36 + eps)))
             bx[0, nC:2*nC] = (np.log(arg5) - np.log(arg10) +
-                              np.log(arg15) - np.log(arg20) +
-                              np.log(arg25) - np.log(arg30) +
-                              np.log(arg35) - np.log(arg40))
+                          np.log(arg15) - np.log(arg20) +
+                          np.log(arg25) - np.log(arg30) +
+                          np.log(arg35) - np.log(arg40))
             bx[0, 2*nC:] = ((np.log(arg4) - np.log(arg9)) +
-                            (np.log(arg14) - np.log(arg19)) +
-                            (np.log(arg24) - np.log(arg29)) +
-                            (np.log(arg34) - np.log(arg39)))
+                        (np.log(arg14) - np.log(arg19)) +
+                        (np.log(arg24) - np.log(arg29)) +
+                        (np.log(arg34) - np.log(arg39)))
             bx /= (4 * np.pi)
 
             # rows += [bx]
@@ -1305,9 +1305,9 @@ def calcRow(
             by = np.zeros((1, 3 * nC))
 
             by[0, 0:nC] = (np.log(arg5) - np.log(arg10) +
-                           np.log(arg15) - np.log(arg20) +
-                           np.log(arg25) - np.log(arg30) +
-                           np.log(arg35) - np.log(arg40))
+                       np.log(arg15) - np.log(arg20) +
+                       np.log(arg25) - np.log(arg30) +
+                       np.log(arg35) - np.log(arg40))
             by[0, nC:2*nC] = ((-2 * np.arctan2(dy2, arg2 + eps)) - (-2 * np.arctan2(dy2, arg7 + eps)) +
                               (-2 * np.arctan2(dy2, arg12 + eps)) - (-2 * np.arctan2(dy2, arg17 + eps)) +
                               (-2 * np.arctan2(dy1, arg22 + eps)) - (-2 * np.arctan2(dy1, arg27 + eps)) +
@@ -1325,9 +1325,9 @@ def calcRow(
             bz = np.zeros((1, 3 * nC))
 
             bz[0, 0:nC] = (np.log(arg4) - np.log(arg9) +
-                           np.log(arg14) - np.log(arg19) +
-                           np.log(arg24) - np.log(arg29) +
-                           np.log(arg34) - np.log(arg39))
+                       np.log(arg14) - np.log(arg19) +
+                       np.log(arg24) - np.log(arg29) +
+                       np.log(arg34) - np.log(arg39))
             bz[0, nC:2*nC] = ((np.log(arg3) - np.log(arg8)) +
                               (np.log(arg13) - np.log(arg18)) +
                               (np.log(arg23) - np.log(arg28)) +
