@@ -1155,22 +1155,56 @@ def calcRow(
         if (comp == "dbx_dx") or ("dbz_dz" in components):
             dbx_dx = np.zeros((1, 3 * nC))
 
-            dbx_dx[0, 0:nC] = (2 * (((dx1**2 - r1 * arg1) / (r1 * arg1**2 + dx1**2 * r1 + eps)) -
-                        ((dx2**2 - r2 * arg6) / (r2 * arg6**2 + dx2**2 * r2 + eps)) +
-                        ((dx2**2 - r3 * arg11) / (r3 * arg11**2 + dx2**2 * r3 + eps)) -
-                        ((dx1**2 - r4 * arg16) / (r4 * arg16**2 + dx1**2 * r4 + eps)) +
-                        ((dx2**2 - r5 * arg21) / (r5 * arg21**2 + dx2**2 * r5 + eps)) -
-                        ((dx1**2 - r6 * arg26) / (r6 * arg26**2 + dx1**2 * r6 + eps)) +
-                        ((dx1**2 - r7 * arg31) / (r7 * arg31**2 + dx1**2 * r7 + eps)) -
-                        ((dx2**2 - r8 * arg36) / (r8 * arg36**2 + dx2**2 * r8 + eps))))
-            dbx_dx[0, nC:2*nC] = (dx2 / (r5 * arg25 + eps) - dx2 / (r2 * arg10 + eps) +
-                           dx2 / (r3 * arg15 + eps) - dx2 / (r8 * arg40 + eps) +
-                           dx1 / (r1 * arg5 + eps) - dx1 / (r6 * arg30 + eps) +
-                           dx1 / (r7 * arg35 + eps) - dx1 / (r4 * arg20 + eps))
-            dbx_dx[0, 2*nC:] = (dx1 / (r1 * arg4 + eps) - dx2 / (r2 * arg9 + eps) +
-                         dx2 / (r3 * arg14 + eps) - dx1 / (r4 * arg19 + eps) +
-                         dx2 / (r5 * arg24 + eps) - dx1 / (r6 * arg29 + eps) +
-                         dx1 / (r7 * arg34 + eps) - dx2 / (r8 * arg39 + eps))
+            dbx_dx[0, 0:nC] = (
+                2 * (
+                    (
+                        (dx1**2 - r1 * arg1) /
+                        (r1 * arg1**2 + dx1**2 * r1 + eps)
+                    ) -
+                    (
+                        (dx2**2 - r2 * arg6) /
+                        (r2 * arg6**2 + dx2**2 * r2 + eps)
+                    ) +
+                    (
+                        (dx2**2 - r3 * arg11) /
+                        (r3 * arg11**2 + dx2**2 * r3 + eps)
+                    ) -
+                    (
+                        (dx1**2 - r4 * arg16) /
+                        (r4 * arg16**2 + dx1**2 * r4 + eps)
+                    ) +
+                    (
+                        (dx2**2 - r5 * arg21) /
+                        (r5 * arg21**2 + dx2**2 * r5 + eps)
+                    ) -
+                    (
+                        (dx1**2 - r6 * arg26) /
+                        (r6 * arg26**2 + dx1**2 * r6 + eps)
+                    ) +
+                    (
+                        (dx1**2 - r7 * arg31) /
+                        (r7 * arg31**2 + dx1**2 * r7 + eps)
+                    ) -
+                    (
+                        (dx2**2 - r8 * arg36) /
+                        (r8 * arg36**2 + dx2**2 * r8 + eps)
+                    )
+                )
+            )
+
+            dbx_dx[0, nC:2*nC] = (
+                dx2 / (r5 * arg25 + eps) - dx2 / (r2 * arg10 + eps) +
+                dx2 / (r3 * arg15 + eps) - dx2 / (r8 * arg40 + eps) +
+                dx1 / (r1 * arg5 + eps) - dx1 / (r6 * arg30 + eps) +
+                dx1 / (r7 * arg35 + eps) - dx1 / (r4 * arg20 + eps)
+            )
+
+            dbx_dx[0, 2*nC:] = (
+                dx1 / (r1 * arg4 + eps) - dx2 / (r2 * arg9 + eps) +
+                dx2 / (r3 * arg14 + eps) - dx1 / (r4 * arg19 + eps) +
+                dx2 / (r5 * arg24 + eps) - dx1 / (r6 * arg29 + eps) +
+                dx1 / (r7 * arg34 + eps) - dx2 / (r8 * arg39 + eps)
+            )
 
             dbx_dx /= (4 * np.pi)
 
