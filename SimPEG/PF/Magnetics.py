@@ -493,7 +493,9 @@ class Forward(object):
 
                 # TO-DO: Find a way to create in
                 # chunks instead
-                stack = stack.rechunk('auto')
+                stack = stack.rechunk({1: 'auto', 0: -1}) # Auto rechunk by rows
+#                stack = stack.rechunk({0: -1, 1: 'auto'}) # Auto rechunk by cols
+                
                 print('DASK: ')
                 print('Tile size (nD, nC): ', stack.shape)
 #                print('Chunk sizes (nD, nC): ', stack.chunks) # For debugging only
@@ -513,28 +515,26 @@ class Forward(object):
 
                 else:
 
-                    if os.path.exists(self.Jpath):
-
-                        G = da.from_zarr(self.Jpath)
-
-                        if np.all(np.r_[
-                                np.any(np.r_[G.chunks[0]] == stack.chunks[0]),
-                                np.any(np.r_[G.chunks[1]] == stack.chunks[1]),
-                                np.r_[G.shape] == np.r_[stack.shape]]):
-                            # Check that loaded G matches supplied data and mesh
-                            print("Zarr file detected with same shape and chunksize ... re-loading")
-                            return G
-
-                        else:
-                            del G
-                            shutil.rmtree(self.Jpath)
-                            print("Zarr file detected with wrong shape and chunksize ... over-writing")
+#                    if os.path.exists(self.Jpath):
+#
+#                        G = da.from_zarr(self.Jpath)
+#
+#                        if np.all(np.r_[
+#                                np.any(np.r_[G.chunks[0]] == stack.chunks[0]),
+#                                np.any(np.r_[G.chunks[1]] == stack.chunks[1]),
+#                                np.r_[G.shape] == np.r_[stack.shape]]):
+#                            # Check that loaded G matches supplied data and mesh
+#                            print("Zarr file detected with same shape and chunksize ... re-loading")
+#                            return G
+#
+#                        else:
+#                            del G
+#                            shutil.rmtree(self.Jpath)
+#                            print("Zarr file detected with wrong shape and chunksize ... over-writing")
 
                     with ProgressBar():
                         print("Saving G to zarr: " + self.Jpath)
-                        da.to_zarr(stack, self.Jpath)
-
-                    G = da.from_zarr(self.Jpath)
+                        G = da.to_zarr(stack, self.Jpath, return_stored=True, overwrite=True)
 
             # elif self.parallelized == "multiprocessing":
 
