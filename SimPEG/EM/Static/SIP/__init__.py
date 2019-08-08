@@ -4,3 +4,4 @@ from .SurveySIP import Survey, Data, from_dc_to_sip_survey
 from . import SrcSIP as Src
 from . import RxSIP as Rx
 from .Run import run_inversion, spectral_ip_mappings
+from .StretchedExponential import SEMultiInvProblem, SEMultiSurvey, SEInvProblem, SESurvey
