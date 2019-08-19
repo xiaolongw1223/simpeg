@@ -686,3 +686,4 @@ class IO(properties.HasProperties):
         plt.tight_layout()
         if figname is not None:
             fig.savefig(figname, dpi=200)
+        return out, cb
