@@ -493,8 +493,8 @@ class Forward(object):
 
                 # TO-DO: Find a way to create in
                 # chunks instead
-                stack = stack.rechunk({0: 'auto', 1: -1}) # Auto rechunk by rows
-#                stack = stack.rechunk({0: -1, 1: 'auto'}) # Auto rechunk by cols
+                # stack = stack.rechunk({0: 'auto', 1: -1}) # Auto rechunk by rows
+                stack = stack.rechunk({0: -1, 1: 'auto'}) # Auto rechunk by cols
                 
                 print('DASK: ')
                 print('Tile size (nD, nC): ', stack.shape)
