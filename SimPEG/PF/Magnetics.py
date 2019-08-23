@@ -493,7 +493,7 @@ class Forward(object):
 
                 # TO-DO: Find a way to create in
                 # chunks instead
-                stack = stack.rechunk({1: 'auto', 0: -1}) # Auto rechunk by rows
+                stack = stack.rechunk({0: 'auto', 1: -1}) # Auto rechunk by rows
 #                stack = stack.rechunk({0: -1, 1: 'auto'}) # Auto rechunk by cols
                 
                 print('DASK: ')
