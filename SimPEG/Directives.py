@@ -1847,11 +1847,10 @@ class Update_IRLS_Joint(InversionDirective):
 
         self.f_joint = []
         for reg in self.reg.objfcts[:-1]:
-#            for comp in reg.objfcts[:-1]: ?????????????????????
             for comp in reg.objfcts:
                 self.f_old += np.sum(comp.f_m**2. / (comp.f_m**2. + comp.epsilon**2.)**(1 - comp.norm/2.))
             self.f_joint.append(self.f_old) # f should be 2 by 1 list
-        print("f_joint", self.f_joint)
+
 
         self.phi_dm = []
         self.phi_dmx = []
@@ -1864,10 +1863,6 @@ class Update_IRLS_Joint(InversionDirective):
 
         if self.sphericalDomain:
             self.angleScale()
-
-
-
-
 
 
     def endIter(self):
@@ -1911,26 +1906,18 @@ class Update_IRLS_Joint(InversionDirective):
         phim_new_joint = [] # store two new values
         for reg in self.reg.objfcts[:-1]:
             for comp in reg.objfcts:
-#            for comp in reg.objfcts[:-1]: ????????
                 phim_new += np.sum(
                     comp.f_m**2. /
                     (comp.f_m**2. + comp.epsilon**2.)**(1 - comp.norm/2.)
                 )
             phim_new_joint.append(phim_new)
-        
-        print("phim_new_joint", phim_new_joint)
-        print("f_joint_old", self.f_joint)
 
         # Update the model used by the regularization
         phi_m_joint_last = []
         for reg in self.reg.objfcts[:-1]:
             reg.model = self.invProb.model
             phi_m_joint_last += [reg(self.invProb.model)]
-        print("phi_m_joint_last", phi_m_joint_last)
 
-
-        print("self.start", self.start)
-        print("self.invProb.phi_d_joint", self.invProb.phi_d_joint)
         # After reaching target misfit with l2-norm, switch to IRLS (mode:2)
         if np.all([self.invProb.phi_d_joint[0] < self.start[0], self.invProb.phi_d_joint[-1] < self.start[-1], 
                     self.mode == 1]):
@@ -1976,9 +1963,7 @@ class Update_IRLS_Joint(InversionDirective):
             # Reset the regularization matrices so that it is
             # recalculated for current model. Do it to all levels of comboObj
             for reg in self.reg.objfcts[:-1]:
-
                 # If comboObj, go down one more level
-#                for comp in reg.objfcts[:-1]: ????????????????
                 for comp in reg.objfcts:
                     comp.stashedR = None
 
@@ -1991,12 +1976,10 @@ class Update_IRLS_Joint(InversionDirective):
             phi_m_joint_new = []
             for reg in self.reg.objfcts[:-1]:
                 phi_m_joint_new += [reg(self.invProb.model)]
-            print("phi_m_joint_new",  phi_m_joint_new)
 
             self.f_joint_change = []
             for i in range(self.invProb.num_models):
                 self.f_joint_change.append(np.abs(self.f_joint[i] - phim_new_joint[i]) / self.f_joint[i])# it is a list, 2 by 1
-            print("f_joint_change",  self.f_joint_change)
 
             if not self.silent:
                 print("delta phim: {0:6.3e}, {0:6.3e}".format(self.f_joint_change[0], self.f_joint_change[-1]))
@@ -2020,15 +2003,12 @@ class Update_IRLS_Joint(InversionDirective):
 
 
             self.f_joint = phim_new_joint
-            print("f_new", self.f_joint)
             self.updateBeta = True
 
             self.invProb.phi_m_joint_last = []
             for reg in self.reg.objfcts[:-1]:
                 self.invProb.phi_m_joint_last.append(reg(self.invProb.model))
             #self.invProb.phi_m_last = self.invProb.phi_m_joint
-            print("self.invProb.phi_m_last", self.invProb.phi_m_joint_last)
-
 
     def startIRLS(self):
         if not self.silent:
