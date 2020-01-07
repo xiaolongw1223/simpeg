@@ -1950,10 +1950,10 @@ class Update_IRLS_Joint(InversionDirective):
 
                 if reg.eps_p > self.floorEps_p and self.coolEps_p:
                     reg.eps_p /= self.coolEpsFact
-                    print('Eps_p: ' + str(reg.eps_p))
+                    #print('Eps_p: ' + str(reg.eps_p))
                 if reg.eps_q > self.floorEps_q and self.coolEps_q:
                     reg.eps_q /= self.coolEpsFact
-                    print('Eps_q: ' + str(reg.eps_q))
+                    #print('Eps_q: ' + str(reg.eps_q))
 
             # Remember the value of the norm from previous R matrices
             # self.f_old = self.reg(self.invProb.model)
@@ -2027,8 +2027,6 @@ class Update_IRLS_Joint(InversionDirective):
         for reg in self.reg.objfcts[:-1]:
             self.invProb.phi_m_joint_last.append(reg(self.invProb.model))
         #self.invProb.phi_m_last = self.invProb.phi_m_joint
-        
-        print("self.invProb.phi_m_last", self.invProb.phi_m_joint_last)
 
         # Either use the supplied epsilon, or fix base on distribution of
         # model values
