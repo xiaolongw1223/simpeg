@@ -1581,8 +1581,11 @@ class BetaCooling_Joint(InversionDirective):
                 
     def initialize(self):
             
-        if self.beta_initial_estimate:
+        if self.beta_initial_estimate or np.any(self.invProb.betas==0):
             self.estimate_betas_eig(self.beta_ratio)
+            
+        else:
+            self.betas = self.invProb.betas
         
         self.dmis_met = np.zeros_like(self.betas, dtype=int)
         self.dmis_met = self.dmis_met.astype(bool)
