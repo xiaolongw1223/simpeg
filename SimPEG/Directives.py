@@ -1823,15 +1823,15 @@ class Update_IRLS_Joint(InversionDirective):
         self.betas = betas
         self.invProb.betas = self.betas
         self.reg.multipliers[:-1] = self.invProb.betas
-
-
-    def initialize(self):
         
-        # initial beta
-        if self.beta_initial_estimate:
+    def initialize(self):
+            
+        if self.beta_initial_estimate or np.any(self.invProb.betas==0):
             self.estimate_betas_eig(self.beta_ratio)
-
-        # inital dmis_met
+            
+        else:
+            self.betas = self.invProb.betas
+        
         self.dmis_met = np.zeros_like(self.betas, dtype=int)
         self.dmis_met = self.dmis_met.astype(bool)
 
