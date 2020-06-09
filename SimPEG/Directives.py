@@ -1177,3 +1177,964 @@ class ProjectSphericalBounds(InversionDirective):
             prob.model = m
 
         self.opt.xc = m
+
+
+### Jae edits
+IterationPrinters = Optimization.IterationPrinters
+StoppingCriteria = Optimization.StoppingCriteria
+
+
+class SaveOutputEveryIteration_Single(SaveEveryIteration):
+    """SaveOutputEveryIteration""" ###### JD edit
+
+    header = None
+    save_txt = True
+    beta = None
+    phi_d = None
+    phi_m = None
+    phi = None
+
+    def initialize(self):
+        if self.save_txt is True:
+            print(
+                "SimPEG.SaveOutputEveryIteration will save your inversion "
+                "progress as: '###-{0!s}.txt'".format(self.fileName)
+            )
+            f = open(self.fileName+'.txt', 'w')
+            self.header = "   #     beta       phi_d       phi_m        phi      cg_iter\n"
+            f.write(self.header)
+            f.close()
+
+        self.beta = []
+        self.phi_d = []
+        self.phi_m = []
+        self.phi = []
+
+    def endIter(self):
+
+        self.beta.append(self.invProb.beta)
+        self.phi_d.append(self.invProb.phi_d)
+        self.phi_m.append(self.invProb.phi_m)
+        self.phi.append(self.opt.f)
+
+        if self.save_txt:
+            f = open(self.fileName+'.txt', 'a')
+            f.write(
+                ' {0:3d}  {1:1.4e}  {2:1.4e}  {3:1.4e}  {4:1.4e}  {5:3d} \n'.format(
+                    self.opt.iter,
+                    self.beta[self.opt.iter-1],
+                    self.phi_d[self.opt.iter-1],
+                    self.phi_m[self.opt.iter-1],
+                    self.phi[self.opt.iter-1],
+                    self.opt.cg_count
+                )
+            )
+            f.close()
+
+    def load_results(self):
+        results = np.loadtxt(self.fileName+str(".txt"), comments="#")
+        self.beta = results[:, 1]
+        self.phi_d = results[:, 2]
+        self.phi_m = results[:, 3]
+
+        self.f = results[:, 4]
+
+        self.target_misfit = self.invProb.dmisfit.prob.survey.nD / 2.
+        self.i_target = None
+
+        if self.invProb.phi_d < self.target_misfit:
+            i_target = 0
+            while self.phi_d[i_target] > self.target_misfit:
+                i_target += 1
+            self.i_target = i_target
+
+    def plot_misfit_curves(self, fname=None, plot_small_smooth=False):
+
+        self.target_misfit = self.invProb.dmisfit.prob.survey.nD / 2.
+        self.i_target = None
+
+        if self.invProb.phi_d < self.target_misfit:
+            i_target = 0
+            while self.phi_d[i_target] > self.target_misfit:
+                i_target += 1
+            self.i_target = i_target
+
+        plt.figure(figsize=(5, 2))
+        ax = plt.subplot(111)
+        ax_1 = ax.twinx()
+        ax.semilogy(np.arange(len(self.phi_d)), self.phi_d, 'k-', lw=2)
+        ax_1.semilogy(np.arange(len(self.phi_d)), self.phi_m, 'r', lw=2)
+
+        ax.plot(np.r_[ax.get_xlim()[0], ax.get_xlim()[1]], np.ones(2)*self.target_misfit, 'k:')
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("$\phi_d$")
+        ax_1.set_ylabel("$\phi_m$", color='r')
+        for tl in ax_1.get_yticklabels():
+            tl.set_color('r')
+        plt.show()
+
+    def plot_tikhonov_curves(self, fname=None, dpi=200):
+
+        self.target_misfit = self.invProb.dmisfit.prob.survey.nD / 2.
+        self.i_target = None
+
+        if self.invProb.phi_d < self.target_misfit:
+            i_target = 0
+            while self.phi_d[i_target] > self.target_misfit:
+                i_target += 1
+            self.i_target = i_target
+
+        fig = plt.figure(figsize = (5, 8))
+        ax1 = plt.subplot(311)
+        ax2 = plt.subplot(312)
+        ax3 = plt.subplot(313)
+
+        ax1.plot(self.beta, self.phi_d, 'k-', lw=2, ms=4)
+        ax1.set_xlim(np.hstack(self.beta).min(), np.hstack(self.beta).max())
+        ax1.set_xlabel("$\\beta$", fontsize = 14)
+        ax1.set_ylabel("$\phi_d$", fontsize = 14)
+
+        ax2.plot(self.beta, self.phi_m, 'k-', lw=2)
+        ax2.set_xlim(np.hstack(self.beta).min(), np.hstack(self.beta).max())
+        ax2.set_xlabel("$\\beta$", fontsize = 14)
+        ax2.set_ylabel("$\phi_m$", fontsize = 14)
+
+        ax3.plot(self.phi_m, self.phi_d, 'k-', lw=2)
+        ax3.set_xlim(np.hstack(self.phi_m).min(), np.hstack(self.phi_m).max())
+        ax3.set_xlabel("$\phi_m$", fontsize = 14)
+        ax3.set_ylabel("$\phi_d$", fontsize = 14)
+
+        if self.i_target is not None:
+            ax1.plot(self.beta[self.i_target], self.phi_d[self.i_target], 'k*', ms=10)
+            ax2.plot(self.beta[self.i_target], self.phi_m[self.i_target], 'k*', ms=10)
+            ax3.plot(self.phi_m[self.i_target], self.phi_d[self.i_target], 'k*', ms=10)
+
+        for ax in [ax1, ax2, ax3]:
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+        plt.tight_layout()
+        plt.show()
+        if fname is not None:
+            fig.savefig(fname, dpi=dpi)
+
+
+class RatioX(InversionDirective):
+    '''
+        Directive for setting RatioX StoppingCriteria.
+        Computes the percentage change of the current model from the previous model.
+
+        ..math::
+        \frac {\| \mathbf{m_i} - \mathbf{m_{i-1}} \|} {\| \mathbf{m_{i-1}} \|}
+
+    '''
+    tol_ratioX=1e-5
+    tol_dmis = 1e-1
+    chifact_target = 1.
+
+    @property
+    def target(self):
+        if getattr(self, '_target', None) is None:
+            nD = 0
+            for survey in self.survey:
+                nD += survey.nD
+
+            self._target = nD*0.5*self.chifact_target
+
+        return self._target
+
+    @target.setter
+    def target(self, val):
+        self._target = val
+
+    def endIter(self):
+#        criteria_1 = np.abs(1. - self.invProb.phi_d / self.target) < self.tol_dmis
+        criteria_1 = True
+        criteria_2 = norm(self.opt.xc - self.opt.x_last) / norm(self.opt.x_last) < self.tol_ratioX
+        if np.all([criteria_1, criteria_2]):
+            print("stopping criteria met: ", norm(self.opt.xc - self.opt.x_last)
+                                            / norm(self.opt.x_last))
+            self.opt.stopNextIteration = True
+
+
+class JointInversion_Directive(InversionDirective):
+    '''
+        Directive for joint inversions. Sets Printers and StoppingCriteria.
+
+        Methods assume we are working with two models.
+    '''
+    class JointInversionPrinters(IterationPrinters):
+        betas = {
+            "title": "betas", "value": lambda M: ["{:.2e}".format(elem)
+            for elem in M.parent.betas], "width": 26,
+            "format":   "%s"
+        }
+        lambd = {
+            "title": "lambda", "value": lambda M: M.parent.lambd, "width": 10,
+            "format":   "%1.2e"
+        }
+        phi_d_joint = {
+            "title": "phi_d", "value": lambda M: ["{:.2e}".format(elem)
+            for elem in M.parent.phi_d_joint], "width": 26,
+            "format":   "%s"
+        }
+        phi_m_joint = {
+            "title": "phi_m", "value": lambda M: ["{:.2e}".format(elem)
+            for elem in M.parent.phi_m_joint], "width": 26,
+            "format":   "%s"
+        }
+        phi_c = {
+            "title": "phi_c", "value": lambda M: M.parent.phi_c, "width": 10,
+            "format":   "%1.2e"
+        }
+        ratio_x = {
+            "title": "ratio_x", "value": lambda M: 1 if M.iter==0 else norm(M.xc-M.x_last) / norm(M.x_last),
+            "width": 10, "format": "%1.2e"
+        }
+        iterationCG = {
+            "title": "iterCG", "value": lambda M: M.cg_count, "width": 10, "format": "%3d"
+        }
+
+    printers = [
+            IterationPrinters.iteration, JointInversionPrinters.betas,
+            JointInversionPrinters.lambd, IterationPrinters.f,
+            JointInversionPrinters.phi_d_joint, JointInversionPrinters.phi_m_joint,
+            JointInversionPrinters.phi_c, JointInversionPrinters.iterationCG,
+            JointInversionPrinters.ratio_x
+        ]
+
+    def initialize(self):
+        ### define relevant attributes
+        self.betas = self.reg.multipliers[:-1]
+        self.lambd = self.reg.multipliers[-1]
+        self.phi_d_joint = []
+        self.phi_m_joint = []
+        self.phi_c = 0.0
+
+        ### pass attributes to invProb
+        self.invProb.betas = self.betas
+        self.invProb.num_models = len(self.betas)
+        self.invProb.lambd = self.lambd
+        self.invProb.phi_d_joint = self.phi_d_joint
+        self.invProb.phi_m_joint = self.phi_m_joint
+        self.invProb.phi_c = self.phi_c
+
+        self.opt.printers = self.printers
+        self.opt.stoppers = [StoppingCriteria.iteration]
+
+    def validate(self, directiveList):
+        # check that this directive is first in the DirectiveList
+        dList = directiveList.dList
+        self_ind = dList.index(self)
+        assert(self_ind==0), ('The JointInversion_Directive must be first.')
+
+        return True
+
+    def endIter(self):
+        ### compute attribute values
+        phi_d = []
+        for dmis in self.dmisfit.objfcts:
+            phi_d.append(dmis(self.opt.xc))
+
+        phi_m = []
+        for reg in self.reg.objfcts:
+            phi_m.append(reg(self.opt.xc))
+
+        ### pass attributes values to invProb
+        ### Assume last reg.objfct is the coupling
+        self.invProb.phi_d_joint = phi_d
+        self.invProb.phi_m_joint = phi_m[:-1]
+        self.invProb.phi_c = phi_m[-1]
+        self.invProb.betas = self.reg.multipliers[:-1]
+        self.invProb.lambd = self.reg.multipliers[-1]
+
+
+class SaveOutputEveryIteration_JointInversion(SaveEveryIteration, InversionDirective):
+    '''
+    SaveOutputEveryIteration for Joint Inversions.
+    Saves information on the tradeoff parameters, data misfits, regularizations,
+    coupling term, number of CG iterations, and value of cost function.
+    '''
+    header = None
+    save_txt = True
+    betas = None
+    phi_d = None
+    phi_m = None
+    phi_c = None
+    phi = None
+
+    def initialize(self):
+        if self.save_txt is True:
+            print(
+                "SimPEG.SaveOutputEveryIteration will save your inversion "
+                "progress as: '###-{0!s}.txt'".format(self.fileName)
+            )
+            f = open(self.fileName+'.txt', 'w')
+            self.header = "  #          betas            lambda         joint_phi_d                joint_phi_m            phi_c       iterCG     phi    \n"
+            f.write(self.header)
+            f.close()
+
+        # Create a list of each
+
+        self.betas = []
+        self.lambd = []
+        self.phi_d = []
+        self.phi_m = []
+        self.phi = []
+        self.phi_c = []
+
+    def endIter(self):
+
+        self.betas.append(["{:.2e}".format(elem) for elem in self.invProb.betas])
+        self.phi_d.append(["{:.3e}".format(elem) for elem in self.invProb.phi_d_joint])
+        self.phi_m.append(["{:.3e}".format(elem) for elem in self.invProb.phi_m_joint])
+        self.lambd.append("{:.2e}".format(self.invProb.lambd))
+        self.phi_c.append(self.invProb.phi_c)
+        self.phi.append(self.opt.f)
+
+        if self.save_txt:
+            f = open(self.fileName+'.txt', 'a')
+            f.write(
+                    ' {0:2d} {1} {2} {3} {4} {5:1.4e}    {6:d}    {7:1.4e}\n'.format(
+                        self.opt.iter,
+                        self.betas[self.opt.iter-1],
+                        self.lambd[self.opt.iter-1],
+                        self.phi_d[self.opt.iter-1],
+                        self.phi_m[self.opt.iter-1],
+                        self.phi_c[self.opt.iter-1],
+                        self.opt.cg_count,
+                        self.phi[self.opt.iter-1] )
+                    )
+            f.close()
+
+    def load_results(self):
+        results = np.loadtxt(self.fileName+str(".txt"), comments="#")
+        self.betas = results[:, 1]
+        self.lambd = results[:, 2]
+        self.phi_d = results[:, 3]
+        self.phi_m = results[:, 4]
+        self.phi_c = results[:, 5]
+        self.f = results[:, 7]
+
+
+class SaveModelEveryIteration_JointInversion(SaveEveryIteration, InversionDirective):
+    # Xiaolong Wei edits, 20200529
+    """SaveModelEveryIteration
+
+    This directive saves the model from joint inversion as a numpy array at each iteration. The
+    default direcroty is the current directoy and the models are saved as
+    `InversionModel-YYYY-MM-DD-HH-MM-iter.npy`
+    The saved model is a long vector containing two models from joint inversion.
+    Spliting two models, please use:
+        'wires.m1*mrec, wires.m2*mrec'
+    """
+
+    def initialize(self):
+        print(
+            "SimPEG.SaveModelEveryIteration will save your models as: "
+            "'{0!s}###-{1!s}.npy'".format(
+                self.directory + os.path.sep, self.fileName
+            )
+        )
+
+    def endIter(self):
+        np.save(
+            '{0!s}{1:03d}-{2!s}'.format(
+                self.directory + os.path.sep, self.opt.iter, self.fileName
+            ), self.opt.xc
+        )
+
+
+class BetaCooling_Joint(InversionDirective):
+    '''
+        Directive for beta cooling schedule to determine the tradeoff
+        parameters of the joint inverse problem.
+        We borrow some code from Update_IRLS.
+    '''
+    chifact_target = 1.
+    beta_tol = 1e-1
+    updateBeta = True
+    coolingRate = 1
+    coolingFactor = 2
+    beta_initial_estimate = True
+    beta_ratio = 1
+    dmis_met = False
+
+    @property
+    def target(self):
+        if getattr(self, '_target', None) is None:
+            nD = []
+            for survey in self.survey:
+                nD += [survey.nD]
+            nD = np.array(nD)
+
+            self._target = nD*0.5*self.chifact_target
+
+        return self._target
+
+    @target.setter
+    def target(self, val):
+        self._target = val
+
+    def estimate_betas_eig(self, beta_ratio):
+        '''
+            Estimate initial betas by eigen values.
+            Method uses one iteration of the Power Method to estimate
+            eigenvectors for each separate inverse problem.
+        '''
+        m = self.invProb.model
+        f = self.invProb.getFields(m, store=True, deleteWarmstart=False)
+
+        # Fix the seed for random vector for consistent results
+        np.random.seed(0)
+        x0 = np.random.rand(*m.shape)
+
+        t = []
+        b = []
+        i_count = 0
+        betas = []
+        # assume dmisfit and reg are combo objective functions.
+        # assume last regularization object is the coupling
+        for dmis, reg in zip(self.dmisfit.objfcts, self.reg.objfcts[:-1]):
+            t.append(x0.dot(dmis.deriv2(m, x0, f=f[i_count])))
+            b.append(x0.dot(reg.deriv2(m, x0, f=f)))
+            i_count += 1
+
+        t = np.array(t)
+        b = np.array(b)
+
+        betas = beta_ratio*(t/b)
+        self.betas = betas
+        self.invProb.betas = self.betas
+        self.reg.multipliers[:-1] = self.invProb.betas
+
+    def initialize(self):
+
+        if self.beta_initial_estimate or np.any(self.invProb.betas==0):
+            self.estimate_betas_eig(self.beta_ratio)
+        else:
+            self.betas = self.invProb.betas
+
+        self.dmis_met = np.zeros_like(self.betas, dtype=int)
+        self.dmis_met = self.dmis_met.astype(bool)
+
+    def endIter(self):
+
+        # Check if target misfit has been reached, if so, set dmis_met to True
+        for i in range(self.invProb.num_models):
+            if self.invProb.phi_d_joint[i] < self.target[i]:
+                self.dmis_met[i] = True
+
+        # check separately if misfits are within the tolerance,
+        # otherwise, scale beta individually
+        for i in range(self.invProb.num_models):
+            if np.all([np.abs(1. - self.invProb.phi_d_joint[i] / self.target[i]) > self.beta_tol,
+                      self.updateBeta, self.dmis_met[i], self.opt.iter%self.coolingRate==0]):
+                ratio = self.target[i] / self.invProb.phi_d_joint[i]
+                if ratio>1:
+                    ratio = np.minimum(1.5, ratio)
+                else:
+                    ratio = np.maximum(0.75, ratio)
+
+                self.invProb.betas[i] = self.invProb.betas[i] * ratio
+
+            elif np.all([self.opt.iter%self.coolingRate==0, self.dmis_met[i] == False]):
+                self.invProb.betas[i] = self.invProb.betas[i] / self.coolingFactor
+
+        self.reg.multipliers[:-1] = self.invProb.betas
+
+
+class LambdaIncrease_Joint(BetaCooling_Joint):
+    '''
+        Will increase weight of coupling term.
+    '''
+    lambd = 0 # default weight for coupling term
+    tol_ratioX = 1e-5
+    lambd_factor = 10
+    joint_inversions = False # indicator to show if currently running joint inversions
+    dmis_criteria = []
+
+    def initialize(self):
+        self.reg.multipliers[-1] = self.lambd
+        self.invProb.lambd = self.lambd
+        self.dmis_criteria = np.zeros_like(self.invProb.betas, dtype=int)
+        self.dmis_criteria = self.dmis_criteria.astype(bool)
+
+    def endIter(self):
+
+        if norm(self.opt.xc - self.opt.x_last) / norm(self.opt.x_last) < self.tol_ratioX:
+            print("norm(xc-x_last) / norm(x_last): ", norm(self.opt.xc - self.opt.x_last) / norm(self.opt.x_last))
+            if not self.joint_inversions:
+                # initiate joint inversions
+                self.joint_inversions = True
+
+                # store model from single inversion
+                self.invProb.single_m = self.invProb.model.copy()
+                self.invProb.previous_m = self.invProb.model.copy()
+
+                # determine initial lambda value
+                power = np.ceil(np.log10(self.invProb.phi_c))
+                self.lambd = 10**(-power) # set initial value for lambda
+                self.invProb.lambd = self.lambd
+                self.reg.multipliers[-1] = self.lambd
+                print("starting joint inversions with lambda = {:.4e}".format(self.lambd))
+            else:
+                self.lambd = self.lambd*self.lambd_factor
+                self.invProb.lambd = self.lambd
+                self.reg.multipliers[-1] = self.lambd
+                print("continue joint inversions with lambda = {:.4e}".format(self.lambd))
+
+            # check if data misfit is within tolerance
+            for i in range(self.invProb.num_models):
+                if np.abs(1. - self.invProb.phi_d_joint[i] / self.target[i]) < self.beta_tol:
+                    self.dmis_criteria[i] = True
+                else:
+                    self.dmis_criteria[i] = False
+
+            if np.all(self.dmis_criteria):
+                self.invProb.previous_m = self.invProb.model.copy()
+                return
+            else:
+                self.opt.xc = self.invProb.previous_m
+                self.opt.stopNextIteration = True
+                print("ending joint inversions")
+
+
+class BetaCooling(InversionDirective):
+    '''
+        Directive for beta cooling schedule to determine the tradeoff
+        parameters of the joint inverse problem.
+        We borrow some code from Update_IRLS.
+    '''
+    chifact_target = 1.
+    beta_tol = 1e-1
+    updateBeta = True
+    coolingRate = 1
+    coolingFactor = 2
+    dmis_met = False
+
+    @property
+    def target(self):
+        if getattr(self, '_target', None) is None:
+            nD = 0
+            for survey in self.survey:
+                nD += survey.nD
+
+            self._target = nD*0.5*self.chifact_target
+
+        return self._target
+
+    @target.setter
+    def target(self, val):
+        self._target = val
+
+    def endIter(self):
+
+        if self.invProb.phi_d < self.target:
+            self.dmis_met = True
+
+        if np.all([np.abs(1. - self.invProb.phi_d / self.target) > self.beta_tol,
+                  self.updateBeta, self.dmis_met, self.opt.iter%self.coolingRate==0]):
+            ratio = self.target / self.invProb.phi_d
+            if ratio>1:
+                ratio = np.minimum(1.5, ratio)
+            else:
+                ratio = np.maximum(0.75, ratio)
+
+            self.invProb.beta = self.invProb.beta * ratio
+
+        elif np.all([self.opt.iter%self.coolingRate==0, self.dmis_met == False]):
+            self.invProb.beta = self.invProb.beta / self.coolingFactor
+
+
+
+
+class Update_IRLS_Joint(InversionDirective):
+    # Xiaolong Wei edits, 20191225
+    """
+    Extend mixed Lp norm (Fournier and Oldenburg, 2019) inversion to
+    joint inversion. This class is applied to cross-gradient and
+    joint total variation joint inversions.
+
+    """
+    f_old = 0
+    f_min_change = 1e-2
+    beta_tol = 1e-1
+    beta_ratio_l2 = None
+    prctile = 100
+    chifact_start = 1.
+    chifact_target = 1.
+
+    # Solving parameter for IRLS (mode:2)
+    IRLSiter = 0
+    minGNiter = 1
+    maxIRLSiter = 20
+    iterStart = 0
+    sphericalDomain = False
+
+    # Beta schedule
+    updateBeta = True
+    betaSearch = True
+    coolingFactor = 2.
+    coolingRate = 1
+    ComboObjFun = False
+    mode = 1
+    coolEpsOptimized = True
+    coolEps_p = True
+    coolEps_q = True
+    floorEps_p = 1e-8
+    floorEps_q = 1e-8
+    coolEpsFact = 1.2
+    silent = False
+    fix_Jmatrix = False
+
+    dmis_met = False
+    beta_initial_estimate = True
+    beta_ratio = 1
+
+
+    @property
+    def target(self):
+        if getattr(self, '_target', None) is None:
+            nD = []
+            for survey in self.survey:
+                nD += [survey.nD]
+            nD = np.array(nD)
+
+            self._target = nD*0.5*self.chifact_target
+
+        return self._target
+
+    @target.setter
+    def target(self, val):
+        self._target = val
+
+    @property
+    def start(self):
+        if getattr(self, '_start', None) is None:
+            nD = []
+            for survey in self.survey:
+                nD += [survey.nD]
+            nD = np.array(nD)
+
+            self._start = nD*0.5*self.chifact_start
+
+        return self._start
+
+    @start.setter
+    def start(self, val):
+        self._start = val
+
+
+    def estimate_betas_eig(self, beta_ratio):
+        '''
+            Estimate initial betas by eigen values.
+            Method uses one iteration of the Power Method to estimate
+            eigenvectors for each separate inverse problem.
+        '''
+        m = self.invProb.model
+        f = self.invProb.getFields(m, store=True, deleteWarmstart=False)
+
+        # Fix the seed for random vector for consistent results
+        np.random.seed(0)
+        x0 = np.random.rand(*m.shape)
+
+        t = []
+        b = []
+        i_count = 0
+        betas = []
+        # assume dmisfit and reg are combo objective functions.
+        # assume last regularization object is the coupling
+        for dmis, reg in zip(self.dmisfit.objfcts, self.reg.objfcts[:-1]):
+            t.append(x0.dot(dmis.deriv2(m, x0, f=f[i_count])))
+            b.append(x0.dot(reg.deriv2(m, x0)))
+            i_count += 1
+
+        t = np.array(t)
+        b = np.array(b)
+
+        betas = beta_ratio*(t/b)
+        self.betas = betas
+        self.invProb.betas = self.betas
+        self.reg.multipliers[:-1] = self.invProb.betas
+
+
+    def initialize(self):
+
+        if self.beta_initial_estimate or np.any(self.invProb.betas==0):
+            self.estimate_betas_eig(self.beta_ratio)
+        else:
+            self.betas = self.invProb.betas
+
+        self.dmis_met = np.zeros_like(self.betas, dtype=int)
+        self.dmis_met = self.dmis_met.astype(bool)
+
+
+        if self.mode == 1:
+
+            self.norms = []
+            for reg in self.reg.objfcts[:-1]:
+                self.norms.append(reg.norms)
+                reg.norms = np.c_[2., 2., 2., 2.]
+                reg.model = self.invProb.model
+
+        # Update the model used by the regularization
+        for reg in self.reg.objfcts[:-1]:
+            reg.model = self.invProb.model
+
+        self.f_joint = []
+        for reg in self.reg.objfcts[:-1]:
+            for comp in reg.objfcts:
+                self.f_old += np.sum(comp.f_m**2. / (comp.f_m**2. + comp.epsilon**2.)**(1 - comp.norm/2.))
+            self.f_joint.append(self.f_old) # f should be 2 by 1 list
+
+        self.phi_dm = []
+        self.phi_dmx = []
+        # Look for cases where the block models in to be scaled
+        for prob in self.prob:
+
+            if getattr(prob, 'coordinate_system', None) is not None:
+                if prob.coordinate_system == 'spherical':
+                    self.sphericalDomain = True
+
+        if self.sphericalDomain:
+            self.angleScale()
+
+
+    def endIter(self):
+
+        if self.sphericalDomain:
+            self.angleScale()
+
+         # Check if target misfit has been reached, if so, set dmis_met to True
+        for i in range(self.invProb.num_models):
+            if self.invProb.phi_d_joint[i] < self.target[i]:
+                self.dmis_met[i] = True
+
+        # check separately if misfits are within the tolerance,
+        # otherwise, scale beta individually
+        for i in range(self.invProb.num_models):
+
+            if np.all([np.abs(1. - self.invProb.phi_d_joint[i] / self.target[i]) > self.beta_tol,
+                      self.updateBeta,
+                      self.dmis_met[i],
+                      self.opt.iter%self.coolingRate==0,
+                      ]):
+
+                ratio = self.target[i] / self.invProb.phi_d_joint[i]
+
+                if ratio>1:
+                    ratio = np.minimum(1.5,ratio)
+                else:
+                    ratio = np.maximum(0.75,ratio)
+
+                self.invProb.betas[i] = self.invProb.betas[i] * ratio
+
+
+            elif np.all([self.opt.iter % self.coolingRate == 0, self.dmis_met[i] == False]):
+
+                self.invProb.betas[i] = self.invProb.betas[i] / self.coolingFactor
+
+        self.reg.multipliers[:-1] = self.invProb.betas
+
+
+        phim_new = 0
+        phim_new_joint = [] # store two new values
+        for reg in self.reg.objfcts[:-1]:
+            for comp in reg.objfcts:
+                phim_new += np.sum(
+                    comp.f_m**2. /
+                    (comp.f_m**2. + comp.epsilon**2.)**(1 - comp.norm/2.)
+                )
+            phim_new_joint.append(phim_new)
+
+
+        # Update the model used by the regularization
+        phi_m_joint_last = []
+        for reg in self.reg.objfcts[:-1]:
+            reg.model = self.invProb.model
+            phi_m_joint_last += [reg(self.invProb.model)]
+
+
+        # After reaching target misfit with l2-norm, switch to IRLS (mode:2)
+        if np.all([self.invProb.phi_d_joint[0] < self.start[0], self.invProb.phi_d_joint[-1] < self.start[-1],
+                    self.mode == 1]):
+            self.startIRLS()
+
+
+        # Only update after GN iterations
+        if np.all([
+            (self.opt.iter-self.iterStart) % self.minGNiter == 0,
+            self.mode != 1
+        ]):
+
+            if self.fix_Jmatrix:
+                print(">> Fix Jmatrix")
+                self.invProb.dmisfit.prob.fix_Jmatrix = True
+
+            # Check for maximum number of IRLS cycles
+            if self.IRLSiter == self.maxIRLSiter:
+                if not self.silent:
+                    print(
+                        "Reach maximum number of IRLS cycles:" +
+                        " {0:d}".format(self.maxIRLSiter)
+                    )
+
+                self.opt.stopNextIteration = True
+                return
+
+            # Print to screen
+            for reg in self.reg.objfcts[:-1]:
+
+                if reg.eps_p > self.floorEps_p and self.coolEps_p:
+                    reg.eps_p /= self.coolEpsFact
+#                    print('Eps_p: ' + str(reg.eps_p))
+                if reg.eps_q > self.floorEps_q and self.coolEps_q:
+                    reg.eps_q /= self.coolEpsFact
+#                    print('Eps_q: ' + str(reg.eps_q))
+
+            # Remember the value of the norm from previous R matrices
+            # self.f_old = self.reg(self.invProb.model)
+
+            self.IRLSiter += 1
+            print("IRLSiter", self.IRLSiter)
+            # Reset the regularization matrices so that it is
+            # recalculated for current model. Do it to all levels of comboObj
+            for reg in self.reg.objfcts[:-1]:
+                # If comboObj, go down one more level
+                for comp in reg.objfcts:
+                    comp.stashedR = None
+
+            for dmis in self.dmisfit.objfcts:
+                if getattr(dmis, 'stashedR', None) is not None:
+                    dmis.stashedR = None
+
+            # Compute new model objective function value
+
+            phi_m_joint_new = []
+            for reg in self.reg.objfcts[:-1]:
+                phi_m_joint_new += [reg(self.invProb.model)]
+
+            self.f_joint_change = []
+            for i in range(self.invProb.num_models):
+                self.f_joint_change.append(np.abs(self.f_joint[i] - phim_new_joint[i]) / self.f_joint[i])# it is a list, 2 by 1
+
+            if not self.silent:
+                print("delta phim: {0:6.3e}, {0:6.3e}".format(self.f_joint_change[0], self.f_joint_change[-1]))
+
+
+            if np.all([
+                self.f_joint_change[0] < self.f_min_change,
+                self.f_joint_change[-1] < self.f_min_change,
+                np.abs(1. - self.invProb.phi_d_joint[0] / self.target[0]) < self.beta_tol,
+                np.abs(1. - self.invProb.phi_d_joint[-1] / self.target[-1]) < self.beta_tol,
+                self.IRLSiter > 1
+            ]):
+
+                print(
+                    "Minimum decrease in regularization." +
+                    "End of IRLS"
+                    )
+                self.opt.stopNextIteration = True
+                return
+
+
+            self.f_joint = phim_new_joint
+            self.updateBeta = True
+
+            self.invProb.phi_m_joint_last = []
+            for reg in self.reg.objfcts[:-1]:
+                self.invProb.phi_m_joint_last.append(reg(self.invProb.model))
+            #self.invProb.phi_m_last = self.invProb.phi_m_joint
+
+
+    def startIRLS(self):
+        if not self.silent:
+            print("Reached starting chifact with l2-norm regularization:" +
+                  " Start IRLS steps...")
+
+        self.mode = 2
+
+        if getattr(self.opt, 'iter', None) is None:
+            self.iterStart = 0
+        else:
+            self.iterStart = self.opt.iter
+
+
+        self.invProb.phi_m_joint_last = []
+        for reg in self.reg.objfcts[:-1]:
+            self.invProb.phi_m_joint_last.append(reg(self.invProb.model))
+        #self.invProb.phi_m_last = self.invProb.phi_m_joint
+
+
+        # Either use the supplied epsilon, or fix base on distribution of
+        # model values
+        for reg in self.reg.objfcts[:-1]:
+
+            if getattr(reg, 'eps_p', None) is None:
+
+                reg.eps_p = np.percentile(
+                                np.abs(reg.mapping*reg._delta_m(
+                                    self.invProb.model)
+                                ), self.prctile
+                            )
+
+            if getattr(reg, 'eps_q', None) is None:
+
+                reg.eps_q = np.percentile(
+                                np.abs(reg.mapping*reg._delta_m(
+                                    self.invProb.model)
+                                ), self.prctile
+                            )
+
+        # Re-assign the norms supplied by user l2 -> lp
+        for reg, norms in zip(self.reg.objfcts[:-1], self.norms):
+            reg.norms = norms
+
+        # Save l2-model
+        self.invProb.l2model = self.invProb.model.copy()
+
+        # Print to screen
+        for reg in self.reg.objfcts[:-1]:
+            if not self.silent:
+                print("eps_p: " + str(reg.eps_p) +
+                      " eps_q: " + str(reg.eps_q))
+
+    def angleScale(self):
+        """
+            Update the scales used by regularization for the
+            different block of models
+        """
+        # Currently implemented for MVI-S only
+        max_p = []
+        for reg in self.reg.objfcts[0].objfcts:
+            eps_p = reg.epsilon
+            f_m = abs(reg.f_m)
+            max_p += [np.max(f_m)]
+
+        max_p = np.asarray(max_p).max()
+
+        max_s = [np.pi, np.pi]
+        for obj, var in zip(self.reg.objfcts[1:3], max_s):
+            obj.scales = np.ones(obj.scales.shape)*max_p/var
+
+    def validate(self, directiveList):
+        # check if a linear preconditioner is in the list, if not warn else
+        # assert that it is listed after the IRLS directive
+        dList = directiveList.dList
+        self_ind = dList.index(self)
+        lin_precond_ind = [
+            isinstance(d, UpdatePreconditioner) for d in dList
+        ]
+
+        if any(lin_precond_ind):
+            assert(lin_precond_ind.index(True) > self_ind), (
+                "The directive 'UpdatePreconditioner' must be after Update_IRLS "
+                "in the directiveList"
+            )
+        else:
+            warnings.warn(
+                "Without a Linear preconditioner, convergence may be slow. "
+                "Consider adding `Directives.UpdatePreconditioner` to your "
+                "directives list"
+            )
+        return True
