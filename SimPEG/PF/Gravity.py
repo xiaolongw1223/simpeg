@@ -5,6 +5,7 @@ from SimPEG.Utils import mkvc
 from SimPEG import Props
 import scipy as sp
 import scipy.constants as constants
+import multiprocessing
 import os
 import time
 import numpy as np
@@ -78,11 +79,15 @@ class GravityIntegral(Problem.LinearProblem):
 
     def Jvec(self, m, v, f=None):
         dmudm = self.rhoMap.deriv(m)
-        return self.G.dot(dmudm*v)
+#        return self.G.dot(dmudm*v)
+        vec = np.dot(self.G, (dmudm*v).astype(np.float32))
+        return vec.astype(np.float64)
 
     def Jtvec(self, m, v, f=None):
         dmudm = self.rhoMap.deriv(m)
-        return dmudm.T * (self.G.T.dot(v))
+#        return dmudm.T * (self.G.T.dot(v))
+        vec = np.dot(self.G.T, v.astype(np.float32))
+        return dmudm.T * vec.astype(np.float64)
 
     @property
     def G(self):
@@ -305,7 +310,8 @@ class Forward(object):
         if self.forwardOnly:
             return np.dot(row, self.model)
         else:
-            return row
+#            return row
+            return np.float32(row)
 
     def progress(self, ind, total):
         """
