@@ -5,6 +5,7 @@ from SimPEG.Utils import mkvc
 from SimPEG import Props
 import scipy as sp
 import scipy.constants as constants
+import multiprocessing
 import os
 import time
 import numpy as np
@@ -78,11 +79,15 @@ class GravityIntegral(Problem.LinearProblem):
 
     def Jvec(self, m, v, f=None):
         dmudm = self.rhoMap.deriv(m)
-        return self.G.dot(dmudm*v)
+#        return self.G.dot(dmudm*v)
+        vec = np.dot(self.G, (dmudm*v).astype(np.float32))
+        return vec.astype(np.float64)
 
     def Jtvec(self, m, v, f=None):
         dmudm = self.rhoMap.deriv(m)
-        return dmudm.T * (self.G.T.dot(v))
+#        return dmudm.T * (self.G.T.dot(v))
+        vec = np.dot(self.G.T, v.astype(np.float32))
+        return dmudm.T * vec.astype(np.float64)
 
     @property
     def G(self):
@@ -188,140 +193,695 @@ class GravityIntegral(Problem.LinearProblem):
         """
         return self.rhoMap
 
+# =============================================================================
+# 
+# 
+# motified by xwei 12/05/2019
+# 
+# 
+# =============================================================================
+
+class GravityGradient(GravityIntegral):
+    '''
+    Gravity Gradiometry object in SimPEG
+    '''
+    def __init__(self, mesh, components=['gzz'], **kwargs):
+
+        self.as_super = super(GravityGradient, self)
+
+        self.as_super.__init__(mesh, **kwargs)
+
+        self.components = components
+
+    @property
+
+    def G(self):
+
+        if not self.ispaired:
+
+            raise Exception('Need to pair!')
+
+        if getattr(self, '_G', None) is None:
+
+            print("Begin linear forward calculation: ")
+
+            start = time.time()
+
+            self._G = self.Fwr_Op()
+
+            print("Linear forward calculation ended in: " + str(time.time()-start) + " sec")
+
+        return self._G
+
+    
+
+    def Fwr_Op(self, m=None):
+        """
+        Gravity forward operator in integral form
+        flag        = 'z' | 'xyz'
+        Return
+        _G        = Linear forward modeling operation
+        Created on March, 15th 2016
+        @author: dominiquef
+        """
+
+        if m is not None:
+
+            self.model = self.rhoMap*m
+
+        if getattr(self, 'actInd', None) is not None:
+
+            if self.actInd.dtype == 'bool':
+
+                inds = np.where(self.actInd)[0]
+
+            else:
+
+                inds = self.actInd
+
+        else:
+
+            inds = np.asarray(range(self.mesh.nC))
+
+        self.nC = len(inds)
+
+        # Create active cell projector
+
+        P = sp.sparse.csr_matrix(
+
+            (np.ones(self.nC), (inds, range(self.nC))),
+
+            shape=(self.mesh.nC, self.nC)
+
+        )
+
+        # Create vectors of nodal location
+
+        # (lower and upper corners for each cell)
+
+        if isinstance(self.mesh, Mesh.TreeMesh):
+
+            # Get upper and lower corners of each cell
+
+            bsw = (self.mesh.gridCC -
+
+                   np.kron(self.mesh.vol.T**(1/3)/2,
+
+                           np.ones(3)).reshape((self.mesh.nC, 3)))
+
+            tne = (self.mesh.gridCC +
+
+                   np.kron(self.mesh.vol.T**(1/3)/2,
+
+                           np.ones(3)).reshape((self.mesh.nC, 3)))
+
+
+
+            xn1, xn2 = bsw[:, 0], tne[:, 0]
+
+            yn1, yn2 = bsw[:, 1], tne[:, 1]
+
+            zn1, zn2 = bsw[:, 2], tne[:, 2]
+
+
+
+        else:
+
+
+
+            xn = self.mesh.vectorNx
+
+            yn = self.mesh.vectorNy
+
+            zn = self.mesh.vectorNz
+
+
+
+            yn2, xn2, zn2 = np.meshgrid(yn[1:], xn[1:], zn[1:])
+
+            yn1, xn1, zn1 = np.meshgrid(yn[:-1], xn[:-1], zn[:-1])
+
+
+
+        self.Yn = P.T*np.c_[Utils.mkvc(yn1), Utils.mkvc(yn2)]
+
+        self.Xn = P.T*np.c_[Utils.mkvc(xn1), Utils.mkvc(xn2)]
+
+        self.Zn = P.T*np.c_[Utils.mkvc(zn1), Utils.mkvc(zn2)]
+
+
+
+        self.rxLoc = self.survey.srcField.rxList[0].locs
+
+        self.nD = int(self.rxLoc.shape[0])
+
+
+        # Switch to determine if the process has to be run in parallel
+
+        job = Forward(
+
+                rxLoc=self.rxLoc, Xn=self.Xn, Yn=self.Yn, Zn=self.Zn,
+
+                n_cpu=self.n_cpu, forwardOnly=self.forwardOnly,
+
+                model=self.model, components = self.components,
+
+                parallelized=self.parallelized
+
+                )
+
+
+        G = job.calculate()
+
+
+
+        return G
+
+    
+
+
 
 class Forward(object):
-    """
-        Add docstring once it works
-    """
+
+    '''
+
+        Forward problem for gravity gradiometry
+
+    '''
 
     progress_index = -1
+
     parallelized = False
+
     rxLoc = None
+
     Xn, Yn, Zn = None, None, None
+
     n_cpu = None
+
     forwardOnly = False
+
     model = None
-    rx_type = 'z'
+
+    components = ['gzz']
 
     def __init__(self, **kwargs):
+
         super(Forward, self).__init__()
+
         Utils.setKwargs(self, **kwargs)
+
+        
 
     def calculate(self):
 
         self.nD = self.rxLoc.shape[0]
 
+        self.nC = self.Xn.shape[0]
+
         if self.parallelized:
+
             if self.n_cpu is None:
 
                 # By default take half the cores, turns out be faster
+
                 # than running full threads
+
                 self.n_cpu = int(multiprocessing.cpu_count()/2)
 
             pool = multiprocessing.Pool(self.n_cpu)
 
             result = pool.map(self.calcTrow, [self.rxLoc[ii, :] for ii in range(self.nD)])
+
             pool.close()
+
             pool.join()
 
         else:
 
             result = []
+
             for ii in range(self.nD):
+
                 result += [self.calcTrow(self.rxLoc[ii, :])]
+
                 self.progress(ii, self.nD)
 
         if self.forwardOnly:
-            return mkvc(np.vstack(result))
+
+            return Utils.mkvc(np.vstack(result))
 
         else:
+
             return np.vstack(result)
 
-    def calcTrow(self, xyzLoc):
-        """
-        Load in the active nodes of a tensor mesh and computes the gravity tensor
-        for a given observation location xyzLoc[obsx, obsy, obsz]
+        
 
-        INPUT:
+    def calcTrow(self, xyzLoc):
+
+        '''
+
+        Load in the active nodes of a Mesh and compute the gravity gradient
+
+        tensor for a given observation location xyzLoc[obsx, obsy, obsz].
+
+        
+
         Xn, Yn, Zn: Node location matrix for the lower and upper most corners of
+
                     all cells in the mesh shape[nC,2]
-        M
+
+                    
+
+        :param np.ndarray xyzLoc: coordinates of observation point
+
+        
+
+        :rtype: numpy.ndarray
+
+
         OUTPUT:
+
         Tx = [Txx Txy Txz]
+
         Ty = [Tyx Tyy Tyz]
+
         Tz = [Tzx Tzy Tzz]
 
-        where each elements have dimension 1-by-nC.
-        Only the upper half 5 elements have to be computed since symetric.
-        Currently done as for-loops but will eventually be changed to vector
-        indexing, once the topography has been figured out.
+        '''
 
-        """
+        # using this constant, if density is in g/cc, then output gravity 
 
-        NewtG = constants.G*1e+8  # Convertion from mGal (1e-5) and g/cc (1e-3)
-        eps = 1e-8  # add a small value to the locations to avoid
+        # gradients will be in units of Eotvos
 
-        # Pre-allocate space for 1D array
-        row = np.zeros((1, self.Xn.shape[0]))
+        # gcons = constants.G*1e+12
 
-        dz = xyzLoc[2] - self.Zn
+        eps = 1e-8
 
-        dy = self.Yn - xyzLoc[1]
+        #NewtG = constants.G*1e8
+        NewtG = constants.G*1e12
 
         dx = self.Xn - xyzLoc[0]
 
-        # Compute contribution from each corners
+        dy = self.Yn - xyzLoc[1]
+
+        dz = self.Zn - xyzLoc[2]
+        
+        compDict = {key: np.zeros(self.Xn.shape[0]) for key in self.components}
+
+        gxx = np.zeros(self.Xn.shape[0])
+
+        gyy = np.zeros(self.Xn.shape[0])
+
+        
+        
         for aa in range(2):
+
             for bb in range(2):
+
                 for cc in range(2):
 
+
+
                     r = (
+
                             mkvc(dx[:, aa]) ** 2 +
+
                             mkvc(dy[:, bb]) ** 2 +
+
                             mkvc(dz[:, cc]) ** 2
-                        ) ** (0.50)
 
-                    if self.rx_type == 'x':
-                        row -= NewtG * (-1) ** aa * (-1) ** bb * (-1) ** cc * (
-                            dy[:, bb] * np.log(dz[:, cc] + r + eps) +
-                            dz[:, cc] * np.log(dy[:, bb] + r + eps) -
-                            dx[:, aa] * np.arctan(dy[:, bb] * dz[:, cc] /
-                                                  (dx[:, aa] * r + eps)))
+                        ) ** (0.50) + eps
 
-                    elif self.rx_type == 'y':
-                        row -= NewtG * (-1) ** aa * (-1) ** bb * (-1) ** cc * (
-                            dx[:, aa] * np.log(dz[:, cc] + r + eps) +
-                            dz[:, cc] * np.log(dx[:, aa] + r + eps) -
-                            dy[:, bb] * np.arctan(dx[:, aa] * dz[:, cc] /
-                                                  (dy[:, bb] * r + eps)))
 
-                    else:
-                        row -= NewtG * (-1) ** aa * (-1) ** bb * (-1) ** cc * (
-                            dx[:, aa] * np.log(dy[:, bb] + r + eps) +
-                            dy[:, bb] * np.log(dx[:, aa] + r + eps) -
-                            dz[:, cc] * np.arctan(dx[:, aa] * dy[:, bb] /
-                                                  (dz[:, cc] * r + eps)))
 
-        if self.forwardOnly:
-            return np.dot(row, self.model)
-        else:
-            return row
+                    dz_r = dz[:, cc] + r + eps
+
+                    dy_r = dy[:, bb] + r + eps
+
+                    dx_r = dx[:, aa] + r + eps
+
+
+
+                    dxr = dx[:, aa] * r + eps
+
+                    dyr = dy[:, bb] * r + eps
+
+                    dzr = dz[:, cc] * r + eps
+
+
+
+                    dydz = dy[:, bb] * dz[:, cc]
+
+                    dxdy = dx[:, aa] * dy[:, bb]
+
+                    dxdz = dx[:, aa] * dz[:, cc]
+
+
+
+                    if 'gx' in self.components:
+
+                        compDict['gx'] += (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+
+                            dy[:, bb] * np.log(dz_r) +
+
+                            dz[:, cc] * np.log(dy_r) -
+
+                            dx[:, aa] * np.arctan(dydz /
+
+                                                  dxr)
+
+                        )
+
+
+
+                    if 'gy' in self.components:
+
+                        compDict['gy']  += (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+
+                            dx[:, aa] * np.log(dz_r) +
+
+                            dz[:, cc] * np.log(dx_r) -
+
+                            dy[:, bb] * np.arctan(dxdz /
+
+                                                  dyr)
+
+                        )
+
+
+
+                    if 'gz' in self.components:
+
+                        compDict['gz']  += (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+
+                            dx[:, aa] * np.log(dy_r) +
+
+                            dy[:, bb] * np.log(dx_r) -
+
+                            dz[:, cc] * np.arctan(dxdy /
+
+                                                  dzr)
+
+                        )
+
+
+
+                    arg = dy[:, bb] * dz[:, cc] / dxr
+
+
+
+                    if ('gxx' in self.components) or ("gzz" in self.components) or ("guv" in self.components):
+
+                        gxx -= (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+
+                            dxdy / (r * dz_r + eps) +
+
+                            dxdz / (r * dy_r + eps) -
+
+                            np.arctan(arg+eps) +
+
+                            dx[:, aa] * (1./ (1+arg**2.)) *
+
+                            dydz/dxr**2. *
+
+                            (r + dx[:, aa]**2./r)
+
+                        )
+
+
+
+                    if 'gxy' in self.components:
+
+                        compDict['gxy'] -= (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+
+                            np.log(dz_r) + dy[:, bb]**2./ (r*dz_r) +
+
+                            dz[:, cc] / r  -
+
+                            1. / (1+arg**2.+ eps) * (dz[:, cc]/r**2) * (r - dy[:, bb]**2./r)
+
+
+
+                        )
+
+
+
+                    if 'gxz' in self.components:
+
+                        compDict['gxz'] -= (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+
+                            np.log(dy_r) + dz[:, cc]**2./ (r*dy_r) +
+
+                            dy[:, bb] / r  -
+
+                            1. / (1+arg**2.) * (dy[:, bb]/(r**2)) * (r - dz[:, cc]**2./r)
+
+
+
+                        )
+
+
+
+                    arg = dx[:, aa]*dz[:, cc]/dyr
+
+
+
+                    if ('gyy' in self.components) or ("gzz" in self.components) or ("guv" in self.components):
+
+                        gyy -= (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+
+                            dxdy / (r*dz_r+ eps) +
+
+                            dydz / (r*dx_r+ eps) -
+
+                            np.arctan(arg+eps) +
+
+                            dy[:, bb] * (1./ (1+arg**2.+ eps)) *
+
+                            dxdz/dyr**2. *
+
+                            (r + dy[:, bb]**2./r)
+
+                        )
+
+
+
+                    if 'gyz' in self.components:
+
+                        compDict['gyz'] -= (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+
+                            np.log(dx_r) + dz[:, cc]**2./ (r*(dx_r)) +
+
+                            dx[:, aa] / r  -
+
+                            1. / (1+arg**2.) * (dx[:, aa]/(r**2)) * (r - dz[:, cc]**2./r)
+
+
+
+                        )
+
+
+
+        if 'gyy' in self.components:
+
+            compDict['gyy'] = gyy
+
+
+
+        if 'gxx' in self.components:
+
+            compDict['gxx'] = gxx
+
+
+
+        if 'gzz' in self.components:
+
+            compDict['gzz'] = -gxx - gyy
+
+
+
+        if 'guv' in self.components:
+
+            compDict['guv'] = 0.5*(gxx - gyy)
+
+
+
+        return np.vstack([NewtG * compDict[key] for key in list(compDict.keys())])
+
+    
 
     def progress(self, ind, total):
+
         """
+
         progress(ind,prog,final)
 
+
+
         Function measuring the progress of a process and print to screen the %.
+
         Useful to estimate the remaining runtime of a large problem.
+
+
 
         Created on Dec, 20th 2015
 
+
+
         @author: dominiquef
+
         """
+
         arg = np.floor(ind/total*10.)
+
         if arg > self.progress_index:
+
             print("Done " + str(arg*10) + " %")
+
             self.progress_index = arg
+
+
+
+
+
+
+
+
+#class Forward(object):
+#    """
+#        Add docstring once it works
+#    """
+#
+#    progress_index = -1
+#    parallelized = False
+#    rxLoc = None
+#    Xn, Yn, Zn = None, None, None
+#    n_cpu = None
+#    forwardOnly = False
+#    model = None
+#    rx_type = 'z'
+#
+#    def __init__(self, **kwargs):
+#        super(Forward, self).__init__()
+#        Utils.setKwargs(self, **kwargs)
+#
+#    def calculate(self):
+#
+#        self.nD = self.rxLoc.shape[0]
+#
+#        if self.parallelized:
+#            if self.n_cpu is None:
+#
+#                # By default take half the cores, turns out be faster
+#                # than running full threads
+#                self.n_cpu = int(multiprocessing.cpu_count()/2)
+#
+#            pool = multiprocessing.Pool(self.n_cpu)
+#
+#            result = pool.map(self.calcTrow, [self.rxLoc[ii, :] for ii in range(self.nD)])
+#            pool.close()
+#            pool.join()
+#
+#        else:
+#
+#            result = []
+#            for ii in range(self.nD):
+#                result += [self.calcTrow(self.rxLoc[ii, :])]
+#                self.progress(ii, self.nD)
+#
+#        if self.forwardOnly:
+#            return mkvc(np.vstack(result))
+#
+#        else:
+#            return np.vstack(result)
+#
+#    def calcTrow(self, xyzLoc):
+#        """
+#        Load in the active nodes of a tensor mesh and computes the gravity tensor
+#        for a given observation location xyzLoc[obsx, obsy, obsz]
+#
+#        INPUT:
+#        Xn, Yn, Zn: Node location matrix for the lower and upper most corners of
+#                    all cells in the mesh shape[nC,2]
+#        M
+#        OUTPUT:
+#        Tx = [Txx Txy Txz]
+#        Ty = [Tyx Tyy Tyz]
+#        Tz = [Tzx Tzy Tzz]
+#
+#        where each elements have dimension 1-by-nC.
+#        Only the upper half 5 elements have to be computed since symetric.
+#        Currently done as for-loops but will eventually be changed to vector
+#        indexing, once the topography has been figured out.
+#
+#        """
+#
+#        NewtG = constants.G*1e+8  # Convertion from mGal (1e-5) and g/cc (1e-3)
+#        eps = 1e-8  # add a small value to the locations to avoid
+#
+#        # Pre-allocate space for 1D array
+#        row = np.zeros((1, self.Xn.shape[0]))
+#
+#        dz = xyzLoc[2] - self.Zn
+#
+#        dy = self.Yn - xyzLoc[1]
+#
+#        dx = self.Xn - xyzLoc[0]
+#
+#        # Compute contribution from each corners
+#        for aa in range(2):
+#            for bb in range(2):
+#                for cc in range(2):
+#
+#                    r = (
+#                            mkvc(dx[:, aa]) ** 2 +
+#                            mkvc(dy[:, bb]) ** 2 +
+#                            mkvc(dz[:, cc]) ** 2
+#                        ) ** (0.50)
+#
+#                    if self.rx_type == 'x':
+#                        row -= NewtG * (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+#                            dy[:, bb] * np.log(dz[:, cc] + r + eps) +
+#                            dz[:, cc] * np.log(dy[:, bb] + r + eps) -
+#                            dx[:, aa] * np.arctan(dy[:, bb] * dz[:, cc] /
+#                                                  (dx[:, aa] * r + eps)))
+#
+#                    elif self.rx_type == 'y':
+#                        row -= NewtG * (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+#                            dx[:, aa] * np.log(dz[:, cc] + r + eps) +
+#                            dz[:, cc] * np.log(dx[:, aa] + r + eps) -
+#                            dy[:, bb] * np.arctan(dx[:, aa] * dz[:, cc] /
+#                                                  (dy[:, bb] * r + eps)))
+#
+#                    else:
+#                        row -= NewtG * (-1) ** aa * (-1) ** bb * (-1) ** cc * (
+#                            dx[:, aa] * np.log(dy[:, bb] + r + eps) +
+#                            dy[:, bb] * np.log(dx[:, aa] + r + eps) -
+#                            dz[:, cc] * np.arctan(dx[:, aa] * dy[:, bb] /
+#                                                  (dz[:, cc] * r + eps)))
+#
+#        if self.forwardOnly:
+#            return np.dot(row, self.model)
+#        else:
+##            return row
+#            return np.float32(row)
+#
+#    def progress(self, ind, total):
+#        """
+#        progress(ind,prog,final)
+#
+#        Function measuring the progress of a process and print to screen the %.
+#        Useful to estimate the remaining runtime of a large problem.
+#
+#        Created on Dec, 20th 2015
+#
+#        @author: dominiquef
+#        """
+#        arg = np.floor(ind/total*10.)
+#        if arg > self.progress_index:
+#            print("Done " + str(arg*10) + " %")
+#            self.progress_index = arg
 
 
 class Problem3D_Diff(Problem.BaseProblem):
