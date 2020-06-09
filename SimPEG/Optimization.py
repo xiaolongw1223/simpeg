@@ -9,6 +9,8 @@ from . import Utils
 
 norm = np.linalg.norm
 
+from time import time
+
 
 __all__ = [
     'Minimize', 'Remember', 'SteepestDescent', 'BFGS', 'GaussNewton',
@@ -161,6 +163,14 @@ class IterationPrinters(object):
     phi_m = {
         "title": "phi_m", "value": lambda M: M.parent.phi_m, "width": 10,
         "format":   "%1.2e"
+    }
+    iterationCG = {
+        "title": "iterCG", "value": lambda M: M.cg_count, "width": 10, 
+        "format": "%3d"
+    }
+    ratioX = {
+        "title": "ratio_x", "value": lambda M: norm(M.xc - M.x_last)/norm(M.x_last), 
+        "width": 10, "format": "%1.2e"
     }
 
 
@@ -1121,7 +1131,7 @@ class ProjectedGNCG(BFGS, Minimize, Remember):
             findSearchDirection()
             Finds the search direction based on projected CG
         """
-
+        self.cg_count = 0
         Active = self.activeSet(self.xc)
         temp = sum((np.ones_like(self.xc.size)-Active))
 
@@ -1129,18 +1139,18 @@ class ProjectedGNCG(BFGS, Minimize, Remember):
         resid = -(1-Active) * self.g
 
         r = (resid - (1-Active)*(self.H * step))
+        r0 = r.copy()
 
         p = self.approxHinv*r
 
         sold = np.dot(r, p)
 
         count = 0
-
-        while np.all([
-            np.linalg.norm(r) > self.tolCG,
-            count < self.maxIterCG
-        ]):
-
+        print("Start CG solve")
+        tc = time()
+        for i in range(self.maxIterCG):
+#            print("i: ", i)
+#            t_cg = time()
             count += 1
 
             q = (1-Active)*(self.H * p)
@@ -1150,6 +1160,10 @@ class ProjectedGNCG(BFGS, Minimize, Remember):
             step += alpha * p
 
             r -= alpha * q
+            
+#            print("r.dot(r) / r0.dot(r0): ", r.dot(r) / r0.dot(r0))
+            if r.dot(r) / r0.dot(r0) < self.tolCG:
+                break
 
             h = self.approxHinv * r
 
@@ -1158,8 +1172,10 @@ class ProjectedGNCG(BFGS, Minimize, Remember):
             p = h + (snew / sold * p)
 
             sold = snew
+#            print("time for one CG iteration: ", time() - t_cg)
             # End CG Iterations
         self.cg_count += count
+        print("CG solve time: " + str(time()-tc))
 
         # Take a gradient step on the active cells if exist
         if temp != self.xc.size:
