@@ -194,11 +194,11 @@ class GravityIntegral(Problem.LinearProblem):
         return self.rhoMap
 
 # =============================================================================
-# 
-# 
-# motified by xwei 12/05/2019
-# 
-# 
+#
+#
+# Motified by Xiaolong Wei 12/05/2019
+#
+#
 # =============================================================================
 
 class GravityGradient(GravityIntegral):
@@ -233,7 +233,7 @@ class GravityGradient(GravityIntegral):
 
         return self._G
 
-    
+
 
     def Fwr_Op(self, m=None):
         """
@@ -357,7 +357,7 @@ class GravityGradient(GravityIntegral):
 
         return G
 
-    
+
 
 
 
@@ -391,7 +391,7 @@ class Forward(object):
 
         Utils.setKwargs(self, **kwargs)
 
-        
+
 
     def calculate(self):
 
@@ -435,7 +435,7 @@ class Forward(object):
 
             return np.vstack(result)
 
-        
+
 
     def calcTrow(self, xyzLoc):
 
@@ -445,17 +445,17 @@ class Forward(object):
 
         tensor for a given observation location xyzLoc[obsx, obsy, obsz].
 
-        
+
 
         Xn, Yn, Zn: Node location matrix for the lower and upper most corners of
 
                     all cells in the mesh shape[nC,2]
 
-                    
+
 
         :param np.ndarray xyzLoc: coordinates of observation point
 
-        
+
 
         :rtype: numpy.ndarray
 
@@ -470,7 +470,7 @@ class Forward(object):
 
         '''
 
-        # using this constant, if density is in g/cc, then output gravity 
+        # using this constant, if density is in g/cc, then output gravity
 
         # gradients will be in units of Eotvos
 
@@ -486,15 +486,15 @@ class Forward(object):
         dy = self.Yn - xyzLoc[1]
 
         dz = self.Zn - xyzLoc[2]
-        
+
         compDict = {key: np.zeros(self.Xn.shape[0]) for key in self.components}
 
         gxx = np.zeros(self.Xn.shape[0])
 
         gyy = np.zeros(self.Xn.shape[0])
 
-        
-        
+
+
         for aa in range(2):
 
             for bb in range(2):
@@ -709,7 +709,7 @@ class Forward(object):
 
         return np.vstack([NewtG * compDict[key] for key in list(compDict.keys())])
 
-    
+
 
     def progress(self, ind, total):
 
