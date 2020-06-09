@@ -1517,7 +1517,7 @@ class SaveOutputEveryIteration_JointInversion(SaveEveryIteration, InversionDirec
 
 
 class SaveModelEveryIteration_JointInversion(SaveEveryIteration, InversionDirective):
-    # Xiaolong Wei edits, 20200529
+    # Xiaolong Wei edits, 05/29/2020
     """SaveModelEveryIteration
 
     This directive saves the model from joint inversion as a numpy array at each iteration. The
@@ -1749,7 +1749,7 @@ class BetaCooling(InversionDirective):
 
 
 class Update_IRLS_Joint(InversionDirective):
-    # Xiaolong Wei edits, 20191225
+    # Xiaolong Wei edits, 12/25/2019
     """
     Extend mixed Lp norm (Fournier and Oldenburg, 2019) inversion to
     joint inversion. This class is applied to cross-gradient and
