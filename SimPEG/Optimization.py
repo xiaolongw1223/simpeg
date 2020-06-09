@@ -9,7 +9,7 @@ from . import Utils
 
 norm = np.linalg.norm
 
-from time import time
+from time import time # Jae
 
 
 __all__ = [
@@ -164,12 +164,14 @@ class IterationPrinters(object):
         "title": "phi_m", "value": lambda M: M.parent.phi_m, "width": 10,
         "format":   "%1.2e"
     }
+
+    '''Jae's code'''
     iterationCG = {
-        "title": "iterCG", "value": lambda M: M.cg_count, "width": 10, 
+        "title": "iterCG", "value": lambda M: M.cg_count, "width": 10,
         "format": "%3d"
     }
     ratioX = {
-        "title": "ratio_x", "value": lambda M: norm(M.xc - M.x_last)/norm(M.x_last), 
+        "title": "ratio_x", "value": lambda M: norm(M.xc - M.x_last)/norm(M.x_last),
         "width": 10, "format": "%1.2e"
     }
 
@@ -1131,7 +1133,7 @@ class ProjectedGNCG(BFGS, Minimize, Remember):
             findSearchDirection()
             Finds the search direction based on projected CG
         """
-        self.cg_count = 0
+        self.cg_count = 0 # Jae
         Active = self.activeSet(self.xc)
         temp = sum((np.ones_like(self.xc.size)-Active))
 
@@ -1146,8 +1148,8 @@ class ProjectedGNCG(BFGS, Minimize, Remember):
         sold = np.dot(r, p)
 
         count = 0
-        print("Start CG solve")
-        tc = time()
+        print("Start CG solve") # Jae
+        tc = time() # Jae
         for i in range(self.maxIterCG):
 #            print("i: ", i)
 #            t_cg = time()
@@ -1160,7 +1162,7 @@ class ProjectedGNCG(BFGS, Minimize, Remember):
             step += alpha * p
 
             r -= alpha * q
-            
+
 #            print("r.dot(r) / r0.dot(r0): ", r.dot(r) / r0.dot(r0))
             if r.dot(r) / r0.dot(r0) < self.tolCG:
                 break
@@ -1175,7 +1177,7 @@ class ProjectedGNCG(BFGS, Minimize, Remember):
 #            print("time for one CG iteration: ", time() - t_cg)
             # End CG Iterations
         self.cg_count += count
-        print("CG solve time: " + str(time()-tc))
+        print("CG solve time: " + str(time()-tc)) # Jae
 
         # Take a gradient step on the active cells if exist
         if temp != self.xc.size:
