@@ -741,11 +741,6 @@ class JTV(BaseCoupling):
         term2 = temp1.dot(temp2).dot(temp3)
         d2c_dm2 = term1 - term2
 
-        temp1 = sp.vstack((d2c_dm1,d_dm2_dc_dm1))
-        temp2 = sp.vstack((d_dm1_dc_dm2, d2c_dm2))
-        result = sp.hstack((temp1,temp2))
-        result = sp.csr_matrix(result)
-
         if v is not None:
             d2c_dm1 = d2c_dm1.dot(v1)
             d2c_dm2 = d2c_dm2.dot(v2)
