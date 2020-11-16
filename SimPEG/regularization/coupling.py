@@ -874,8 +874,7 @@ class Linear(BaseCoupling):
         :return: a scalar value.
         '''
 
-        norm = np.linalg.norm(gradient)
-        result = norm(
+        result = np.linalg.norm(
             self.relation(model)
             )
         return result
