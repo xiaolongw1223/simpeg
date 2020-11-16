@@ -755,7 +755,7 @@ class JTV(BaseCoupling):
 
         return result
 
-    
+
 ###############################################################################
 #                                                                             #
 #                            Linear constraint                                #
@@ -903,7 +903,7 @@ class Linear(BaseCoupling):
         return result
 
 
-    def deriv2(self, model):
+    def deriv2(self, model, v=None):
         '''
         Computes the Hessian of the linear coupling term.
 
@@ -924,6 +924,11 @@ class Linear(BaseCoupling):
         m2 = self.map2*model
         n = m1.shape[0]
 
+        if v is not None:
+            assert v.size == 2*m1.size, 'vector v must be of size 2*M'
+            v1 = self.map1*v
+            v2 = self.map2*v
+
         d2c_dm1 = utils.sdiag(
             np.ones(n) * (2*k1**2)
             )
@@ -938,9 +943,18 @@ class Linear(BaseCoupling):
 
         d_dm2_dc_dm1 = d_dm1_dc_dm2
 
-        temp1 = sp.vstack((d2c_dm1,d_dm2_dc_dm1))
-        temp2 = sp.vstack((d_dm1_dc_dm2, d2c_dm2))
-        result = sp.hstack((temp1,temp2))
-        result = sp.csr_matrix(result)
+
+        if v is not None:
+            d2c_dm1 = d2c_dm1.dot(v1)
+            d2c_dm2 = d2c_dm2.dot(v2)
+            d_dm2_dc_dm1 = d_dm2_dc_dm1.dot(v1)
+            d_dm1_dc_dm2 = d_dm1_dc_dm2.dot(v2)
+            result = np.concatenate((d2c_dm1 + d_dm1_dc_dm2, d_dm2_dc_dm1 + d2c_dm2))
+        else:
+            temp1 = sp.vstack((d2c_dm1,d_dm2_dc_dm1))
+            temp2 = sp.vstack((d_dm1_dc_dm2, d2c_dm2))
+            result = sp.hstack((temp1,temp2))
+            result = sp.csr_matrix(result)
+
 
         return result
