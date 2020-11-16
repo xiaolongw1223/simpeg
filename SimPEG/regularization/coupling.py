@@ -855,9 +855,9 @@ class Linear(BaseCoupling):
 
         m1 = self.map1*model
         m2 = self.map2*model
-        k1 = self.linear_coefficients[0]
-        k2 = self.linear_coefficients[1]
-        k3 = self.linear_coefficients[2]
+        k1 = self.coefficients[0]
+        k2 = self.coefficients[1]
+        k3 = self.coefficients[2]
 
         return k1*m1 + k2*m2 + k3
 
