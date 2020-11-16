@@ -895,7 +895,7 @@ class Linear(BaseCoupling):
         k2 = self.coefficients[1]
 
         dc_dm1 = 2 * k1 * self.relation(model)
-        dc_dm2 = -2 * k2 * self.relation(model)
+        dc_dm2 = 2 * k2 * self.relation(model)
 
         result = np.concatenate((dc_dm1,dc_dm2))
 
@@ -937,7 +937,7 @@ class Linear(BaseCoupling):
             )
 
         d_dm1_dc_dm2 = utils.sdiag(
-            np.ones(n) * (-2*k2*k1)
+            np.ones(n) * (2*k2*k1)
             )
 
         d_dm2_dc_dm1 = d_dm1_dc_dm2
