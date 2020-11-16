@@ -826,7 +826,7 @@ class Linear(BaseCoupling):
 
         return self._coefficients
 
-    @epsilon.setter
+    @coefficients.setter
     def coefficients(self, val):
         """
         :param list val: [k1, k2, k3]
