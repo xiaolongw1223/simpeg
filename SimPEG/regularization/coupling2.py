@@ -85,7 +85,7 @@ class JTV(BaseCoupling):
     def epsilon(self):
         if getattr(self, '_epsilon', None) is None:
             
-            self._epsilon = 1e-6
+            self._epsilon = 1e-10
 
         return self._epsilon
 
