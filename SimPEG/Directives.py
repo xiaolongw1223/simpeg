@@ -1783,7 +1783,7 @@ class Update_IRLS_Joint(InversionDirective):
     floorEps_p = 1e-8
     floorEps_q = 1e-8
     coolEpsFact = 1.2
-    silent = False
+    silent = True
     fix_Jmatrix = False
 
     dmis_met = False
@@ -1995,7 +1995,7 @@ class Update_IRLS_Joint(InversionDirective):
             # self.f_old = self.reg(self.invProb.model)
 
             self.IRLSiter += 1
-            print("IRLSiter", self.IRLSiter)
+            #print("IRLSiter", self.IRLSiter)
             # Reset the regularization matrices so that it is
             # recalculated for current model. Do it to all levels of comboObj
             for reg in self.reg.objfcts[:-1]:
