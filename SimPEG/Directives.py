@@ -2022,7 +2022,7 @@ class Update_IRLS_Joint(InversionDirective):
                 print("delta phim: {0:6.3e}, {0:6.3e}".format(self.f_joint_change[0], self.f_joint_change[-1]))
 
 
-
+            print("f_joint_change:", self.f_joint_change)
             if np.all([
                 self.f_joint_change[0] < self.f_min_change,
                 self.f_joint_change[-1] < self.f_min_change,
