@@ -2023,13 +2023,13 @@ class Update_IRLS_Joint(InversionDirective):
 
 
             print("f_joint_change: ", self.f_joint_change)
-#             stop_alpha = norm(self.opt.xc - self.opt.x_last) / norm(self.opt.x_last)
-#             print("stopping tolerance: ", stop_alpha)
+            stop_alpha = norm(self.opt.xc - self.opt.x_last) / norm(self.opt.x_last)
+            print("stopping tolerance: ", stop_alpha)
             
             if np.all([
-                self.f_joint_change[0] < self.f_min_change,
-                self.f_joint_change[-1] < self.f_min_change,
-#                 stop_alpha < self.f_min_change,
+#                 self.f_joint_change[0] < self.f_min_change,
+#                 self.f_joint_change[-1] < self.f_min_change,
+                stop_alpha < self.f_min_change,
                 np.abs(1. - self.invProb.phi_d_joint[0] / self.target[0]) < self.beta_tol,
                 np.abs(1. - self.invProb.phi_d_joint[-1] / self.target[-1]) < self.beta_tol,
                 self.IRLSiter > 1
